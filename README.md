@@ -1,8 +1,8 @@
 # MemoryLink server
 
-FastAPI service + single-page web UI. Data lives in `server/data/` (uploaded
-images, thumbnails, scaled copies and a SQLite database) — nothing else needs
-setting up.
+FastAPI service + single-page web UI. Data lives in `server/data/` by default
+(uploaded images, thumbnails, scaled copies and a SQLite database); set
+`MEMORYLINK_DATA_DIR` to use another location.
 
 ## Run
 
@@ -11,6 +11,9 @@ python -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app:app --host 0.0.0.0 --port 8000
 ```
+
+For a production installation with a systemd unit, dedicated data directory and
+Apache TLS reverse proxy, see [`deploy/README.md`](deploy/README.md).
 
 ## Web UI
 

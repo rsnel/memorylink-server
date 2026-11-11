@@ -1,0 +1,42 @@
+[Unit]
+Description=MemoryLink photoframe server
+Documentation=https://github.com/rsnel/memorylink-server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=memorylink
+Group=memorylink
+WorkingDirectory=/opt/memorylink/server
+# EnvironmentFile values override the defaults below.
+Environment=MEMORYLINK_DATA_DIR=/var/lib/memorylink
+EnvironmentFile=-/etc/memorylink.env
+StateDirectory=memorylink
+StateDirectoryMode=0750
+UMask=0027
+ExecStart=/opt/memorylink/server/.venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=3
+TimeoutStartSec=30
+TimeoutStopSec=20
+KillSignal=SIGTERM
+
+# Hardening: the service only needs to read its code and write the data dir.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths=/var/lib/memorylink
+
+[Install]
+WantedBy=multi-user.target

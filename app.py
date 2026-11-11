@@ -40,7 +40,9 @@ from PIL import Image, ImageOps
 from pydantic import BaseModel
 
 BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "data"
+DATA_DIR = Path(
+    os.getenv("MEMORYLINK_DATA_DIR", str(BASE_DIR / "data"))
+).expanduser().resolve()
 THUMBS_DIR = DATA_DIR / "thumbs"
 SCALED_DIR = DATA_DIR / "scaled"
 STATIC_DIR = BASE_DIR / "static"
@@ -64,7 +66,7 @@ ONLINE_TIMEOUT_SECONDS = 20
 
 # Bump this together with the VERSION file when the server code changes. If the
 # file is newer than this constant, the running process is out of date.
-SERVER_VERSION = 9
+SERVER_VERSION = 10
 VERSION_PATH = BASE_DIR / "VERSION"
 
 # Must match the Transition enum names in the Android app.
