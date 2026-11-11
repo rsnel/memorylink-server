@@ -1,0 +1,1270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/png" sizes="64x64" href="/static/favicon.png">
+<link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+<title>MemoryLink — Photoframe</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #1a1d24;
+    --panel2: #232732;
+    --text: #e7e9ee;
+    --muted: #9aa1ad;
+    --accent: #4f8cff;
+    --danger: #e05252;
+    --ok: #3ecf8e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  .sticky-wrap { position: sticky; top: 0; z-index: 10; }
+  header {
+    background: var(--panel);
+    border-bottom: 1px solid #000;
+    padding: 12px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .top { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  .frame-status { font-size: 13px; color: var(--muted); }
+  .frame-status.online { color: var(--ok); }
+  .frame-status.offline { color: var(--danger); }
+  .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  button, .upload-btn {
+    background: var(--panel2);
+    color: var(--text);
+    border: 1px solid #343947;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font: inherit;
+    cursor: pointer;
+  }
+  button:hover, .upload-btn:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger { color: var(--danger); }
+  button.danger:hover { border-color: var(--danger); }
+  .controls label { color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .controls .info { color: var(--muted); font-size: 12px; }
+  .controls input[type=number] {
+    width: 64px;
+    background: var(--panel2);
+    color: var(--text);
+    border: 1px solid #343947;
+    border-radius: 6px;
+    padding: 6px 8px;
+  }
+  .status { font-size: 13px; color: var(--muted); min-height: 18px; }
+  .status.error { color: var(--danger); }
+  .status.ok { color: var(--ok); }
+
+  .recommendations {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 12px;
+    border: 1px solid #9a6b1f;
+    border-radius: 8px;
+    background: #2a2110;
+    color: #f2d18b;
+    font-size: 13px;
+  }
+  .recommendations[hidden] { display: none; }
+  .recommendations button {
+    align-self: flex-start;
+    margin-top: 4px;
+    padding: 5px 12px;
+    font-size: 12px;
+  }
+
+  .transition-panel {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    padding-top: 6px;
+    border-top: 1px solid #343947;
+  }
+  .transition-panel.hidden { display: none; }
+  .transition-panel label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--text);
+    font-size: 13px;
+  }
+  .transition-panel .hint { color: var(--muted); font-size: 12px; margin-left: auto; }
+
+  .bt-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 6px;
+    border-top: 1px solid #343947;
+  }
+  .bt-panel.hidden { display: none; }
+  .bt-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--text);
+    font-size: 14px;
+  }
+  .bt-head button { padding: 4px 10px; font-size: 12px; }
+  #btList {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 38vh;
+    overflow: auto;
+  }
+  .bt-row {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 7px 10px;
+    border: 1px solid #343947;
+    border-radius: 8px;
+    background: var(--panel2);
+    font-size: 12px;
+  }
+  .bt-row .bt-name { color: var(--text); font-weight: 500; }
+  .bt-row .bt-meta {
+    color: var(--muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .bt-row input {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid #343947;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font: inherit;
+  }
+  .bt-empty { color: var(--muted); font-size: 13px; }
+
+  .github-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    padding-top: 6px;
+    border-top: 1px solid #343947;
+  }
+  .github-panel.hidden { display: none; }
+  .gh-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    color: var(--text);
+    font-size: 13px;
+  }
+  .gh-line input {
+    flex: 1 1 240px;
+    background: var(--panel2);
+    color: var(--text);
+    border: 1px solid #343947;
+    border-radius: 6px;
+    padding: 6px 8px;
+    font: inherit;
+  }
+  .github-panel .hint { color: var(--muted); font-size: 12px; }
+
+  .tag-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .tag-bar .label { color: var(--muted); font-size: 13px; }
+  .tag-bar .hint { color: var(--muted); font-size: 12px; margin-left: auto; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    background: var(--panel2);
+    border: 1px solid #343947;
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .chip:hover { border-color: var(--accent); }
+  .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .chip.exclude { background: var(--danger); border-color: var(--danger); color: #fff; }
+  select {
+    background: var(--panel2);
+    color: var(--text);
+    border: 1px solid #343947;
+    border-radius: 6px;
+    padding: 5px 8px;
+    font: inherit;
+  }
+
+  .combine-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 20px;
+    background: #172033;
+    border-bottom: 1px solid #2a3a55;
+    color: var(--muted);
+  }
+  .combine-bar.hidden { display: none; }
+  .combine-bar b { color: var(--text); }
+
+  main {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+    padding: 20px;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid #2a2e3a;
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(79,140,255,.35); }
+  .card.onframe { border-color: var(--ok); box-shadow: 0 0 0 2px rgba(62,207,142,.3); }
+  .card[draggable=true] { cursor: grab; }
+  .card.dragging { opacity: .45; }
+  .imgwrap {
+    position: relative;
+    aspect-ratio: 9 / 16;
+    background: #000;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+  }
+  .imgwrap img { width: 100%; height: 100%; object-fit: contain; }
+  .onframe-badge {
+    position: absolute; top: 8px; left: 8px; z-index: 1;
+    background: var(--ok); color: #06281a;
+    font-size: 11px; font-weight: 600;
+    padding: 2px 8px; border-radius: 999px;
+  }
+  .meta { padding: 10px 12px 4px; }
+  .meta .name {
+    font-size: 13px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .meta .dims { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; align-items: center; }
+  .tag {
+    background: #2c3240;
+    border: 1px solid #3a4151;
+    border-radius: 999px;
+    padding: 1px 8px;
+    font-size: 11px;
+    color: var(--text);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .tag .tag-x {
+    background: none; border: none; color: var(--muted);
+    cursor: pointer; padding: 0; font-size: 13px; line-height: 1;
+  }
+  .tag .tag-x:hover { color: var(--danger); }
+  .tag-add {
+    background: none;
+    border: 1px dashed #3a4151;
+    border-radius: 999px;
+    padding: 1px 8px;
+    font-size: 11px;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .tag-add:hover { border-color: var(--accent); color: var(--accent); }
+  .tag-input {
+    width: 90px;
+    background: var(--panel2);
+    color: var(--text);
+    border: 1px solid var(--accent);
+    border-radius: 999px;
+    padding: 2px 8px;
+    font-size: 11px;
+  }
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px 12px; }
+  .actions button { flex: 1 1 auto; padding: 6px 8px; font-size: 12px; }
+  .empty { grid-column: 1 / -1; text-align: center; color: var(--muted); padding: 60px 0; }
+</style>
+</head>
+<body>
+<div class="sticky-wrap">
+  <header>
+    <div class="top">
+      <h1>MemoryLink Photoframe</h1>
+      <span id="frameStatus" class="frame-status offline">● Frame offline</span>
+      <div class="controls">
+        <button id="slideshowBtn" class="primary">▶ Start slideshow</button>
+        <label>Interval (s) <input id="interval" type="number" min="5" max="3600" value="30"></label>
+        <label><input id="randomOrder" type="checkbox"> Random order</label>
+        <label><input id="showClock" type="checkbox"> Clock</label>
+        <label><input id="blurBackground" type="checkbox"> Blurred background</label>
+        <button id="transitionBtn" type="button">Transitions</button>
+        <button id="bluetoothBtn" type="button">Bluetooth</button>
+        <button id="githubBtn" type="button">GitHub</button>
+        <label class="upload-btn">Upload images<input id="fileInput" type="file" accept="image/*" multiple hidden></label>
+        <label class="upload-btn">Push update APK<input id="apkInput" type="file" accept=".apk,application/vnd.android.package-archive" hidden></label>
+        <button id="cancelUpdateBtn" class="danger" type="button" hidden>Cancel update</button>
+        <span id="updateInfo" class="info"></span>
+      </div>
+    </div>
+    <div id="tagBar" class="tag-bar">
+      <span class="label">Slideshow tags:</span>
+      <div id="tagChips" class="chips"></div>
+      <select id="matchMode">
+        <option value="all" selected>Match all (AND)</option>
+        <option value="any">Match any (OR)</option>
+      </select>
+      <button id="clearFilterBtn">Clear</button>
+      <span class="hint">Drag photos to set the slideshow order</span>
+    </div>
+    <div id="excludeTagBar" class="tag-bar">
+      <span class="label">Exclude tags:</span>
+      <div id="excludeTagChips" class="chips"></div>
+      <button id="clearExcludeBtn">Clear</button>
+      <span class="hint">Photos with any of these tags are hidden</span>
+    </div>
+    <div id="status" class="status"></div>
+    <div id="recommendations" class="recommendations" hidden></div>
+    <div id="transitionPanel" class="transition-panel hidden"></div>
+    <div id="bluetoothPanel" class="bt-panel hidden">
+      <div class="bt-head">
+        <span>Nearby Bluetooth devices</span>
+        <button id="btRefreshBtn" type="button">Refresh</button>
+      </div>
+      <div id="btList"></div>
+    </div>
+    <div id="githubPanel" class="github-panel hidden">
+      <div class="gh-line">
+        <span>GitHub Actions build</span>
+        <span id="githubStatus" class="info">Checking…</span>
+      </div>
+      <div class="gh-line">
+        <input
+          id="githubToken"
+          type="password"
+          autocomplete="off"
+          placeholder="GitHub token with Actions access" />
+        <button id="saveGithubTokenBtn" type="button">Save token</button>
+        <button id="clearGithubTokenBtn" type="button" class="danger">Clear</button>
+      </div>
+      <div class="gh-line">
+        <button id="downloadGithubBtn" class="primary" type="button" disabled>
+          Download latest build
+        </button>
+        <button id="restartFrameBtn" type="button">Restart frame</button>
+        <button id="restartServerBtn" type="button" class="danger" hidden>
+          Restart server
+        </button>
+        <span class="hint">Token is stored on the server with mode 600.</span>
+      </div>
+    </div>
+  </header>
+
+  <div id="combineBar" class="combine-bar hidden">
+    <span>Edit: <b id="selCount">0</b> selected</span>
+    <button id="combineBtn">Combine → portrait 1080×1920</button>
+    <button id="fitBtn">Fit one → portrait</button>
+    <button id="clearSelBtn">Clear</button>
+  </div>
+</div>
+
+<main id="gallery"></main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+let images = [];
+let selectedTags = new Set();
+let excludedTags = new Set();
+let matchAll = true;
+let shownId = null; // image the frame last reported as actually displayed
+let frameOnline = false;
+let draggedCard = null;
+let orderDirty = false;
+let enabledTransitions = new Set();
+let transitionSaveTimer = null;
+let btInterval = null;
+let githubConfigured = false;
+let restartSupported = false;
+
+// Must match the Transition enum names in the Android app.
+const TRANSITIONS = [
+  ["DISSOLVE", "Dissolve"],
+  ["SLIDE_LEFT", "Slide left"],
+  ["SLIDE_RIGHT", "Slide right"],
+  ["SLIDE_UP", "Slide up"],
+  ["SLIDE_DOWN", "Slide down"],
+  ["ZOOM_IN", "Zoom in"],
+  ["ZOOM_OUT", "Zoom out"],
+];
+const selected = new Set(); // images selected for combine / fit
+
+const escapeHtml = (s) => String(s ?? "").replace(/[&<>"']/g,
+  (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  if (!res.ok) {
+    let msg = res.statusText;
+    try { const b = await res.json(); if (b && b.detail) msg = b.detail; } catch (e) { /* not json */ }
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+function setStatus(msg, kind = "") {
+  const el = $("#status");
+  el.textContent = msg;
+  el.className = "status " + kind;
+  if (msg) {
+    clearTimeout(setStatus._t);
+    setStatus._t = setTimeout(() => { el.textContent = ""; el.className = "status"; }, 6000);
+  }
+}
+
+function allTags() {
+  const m = new Map();
+  for (const img of images) for (const t of img.tags) m.set(t, (m.get(t) || 0) + 1);
+  return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+}
+
+function visibleImages() {
+  const sel = [...selectedTags];
+  const excl = [...excludedTags];
+  return images.filter((img) => {
+    if (sel.length) {
+      const included = matchAll
+        ? sel.every((t) => img.tags.includes(t))
+        : sel.some((t) => img.tags.includes(t));
+      if (!included) return false;
+    }
+    if (excl.length && excl.some((t) => img.tags.includes(t))) return false;
+    return true;
+  });
+}
+
+function renderTagBar() {
+  const tags = allTags();
+  const includeWrap = $("#tagChips");
+  const excludeWrap = $("#excludeTagChips");
+  includeWrap.innerHTML = "";
+  excludeWrap.innerHTML = "";
+  if (!tags.length) {
+    const empty = '<span style="color:var(--muted);font-size:13px;">No tags yet — add tags to images below.</span>';
+    includeWrap.innerHTML = empty;
+    excludeWrap.innerHTML = empty;
+    return;
+  }
+  for (const [name, count] of tags) {
+    const includeChip = document.createElement("button");
+    includeChip.type = "button";
+    includeChip.className = "chip" + (selectedTags.has(name) ? " on" : "");
+    includeChip.textContent = name + " (" + count + ")";
+    includeChip.addEventListener("click", () => {
+      if (selectedTags.has(name)) selectedTags.delete(name); else selectedTags.add(name);
+      renderTagBar();
+      renderGallery();
+    });
+    includeWrap.appendChild(includeChip);
+
+    const excludeChip = document.createElement("button");
+    excludeChip.type = "button";
+    excludeChip.className = "chip" + (excludedTags.has(name) ? " exclude" : "");
+    excludeChip.textContent = name + " (" + count + ")";
+    excludeChip.addEventListener("click", () => {
+      if (excludedTags.has(name)) excludedTags.delete(name); else excludedTags.add(name);
+      renderTagBar();
+      renderGallery();
+    });
+    excludeWrap.appendChild(excludeChip);
+  }
+}
+
+function renderTransitionPanel() {
+  const panel = $("#transitionPanel");
+  panel.innerHTML = TRANSITIONS.map(([name, label]) =>
+    '<label><input type="checkbox" data-transition="' + name + '"' +
+      (enabledTransitions.has(name) ? " checked" : "") + "> " + label + "</label>"
+  ).join("") +
+    '<span class="hint">None checked = all transitions</span>';
+}
+
+function updateFrameStatus() {
+  const el = $("#frameStatus");
+  el.textContent = frameOnline ? "● Frame online" : "● Frame offline";
+  el.className = "frame-status " + (frameOnline ? "online" : "offline");
+}
+
+function renderUpdateInfo(update) {
+  const info = $("#updateInfo");
+  const cancel = $("#cancelUpdateBtn");
+  if (!update) {
+    info.textContent = "";
+    cancel.hidden = true;
+    return;
+  }
+  const status = update.status || "pending";
+  const name = update.name || "update";
+  switch (status) {
+    case "pending": info.textContent = "Update pending: " + name; break;
+    case "installing": info.textContent = "Installing: " + name; break;
+    case "installed": info.textContent = "Installed: " + name; break;
+    case "failed":
+      info.textContent = "Update failed: " + name +
+        (update.error ? " — " + update.error : " — no error reported");
+      break;
+    case "canceled": info.textContent = "Update canceled: " + name; break;
+    default: info.textContent = "Update " + status + ": " + name;
+  }
+  cancel.hidden = !(status === "pending" || status === "installing" || status === "failed");
+}
+
+function renderRecommendations(info) {
+  const el = $("#recommendations");
+  restartSupported = !!(info && info.restart_supported);
+  const githubRestart = $("#restartServerBtn");
+  if (githubRestart) githubRestart.hidden = !restartSupported;
+
+  const messages = [];
+  let showRestart = false;
+  if (info) {
+    if (info.server_behind) {
+      messages.push(
+        "Server code was updated (file version " + info.server_files_version +
+        ", running " + info.server_version + "). Restart the server."
+      );
+      showRestart = restartSupported;
+    }
+    if (info.frame_behind) {
+      messages.push(
+        "Frame is running build " + info.frame_version_code +
+        " but build " + info.queued_update_build +
+        " is queued. Push the update or approve it on the frame."
+      );
+    }
+  }
+  if (!messages.length) {
+    el.hidden = true;
+    el.innerHTML = "";
+    return;
+  }
+  el.innerHTML = messages.map((m) => "<div>⚠ " + escapeHtml(m) + "</div>").join("") +
+    (showRestart
+      ? '<button id="restartFromRecommendation" type="button" class="danger">Restart server</button>'
+      : "");
+  el.hidden = false;
+}
+
+function renderBluetooth(devices) {
+  const list = $("#btList");
+  list.innerHTML = "";
+  if (!devices || !devices.length) {
+    list.innerHTML = '<div class="bt-empty">No Bluetooth devices seen yet.</div>';
+    return;
+  }
+  for (const dev of devices) {
+    const row = document.createElement("div");
+    row.className = "bt-row";
+
+    const name = document.createElement("div");
+    name.className = "bt-name";
+    name.textContent = dev.name || "(unnamed device)";
+
+    const meta = document.createElement("div");
+    meta.className = "bt-meta";
+    const rssi = dev.rssi === null || dev.rssi === undefined ? "?" : dev.rssi;
+    const seen = dev.last_seen ? new Date(dev.last_seen).toLocaleString() : "unknown";
+    const count = dev.seen_count === null || dev.seen_count === undefined
+      ? 0 : dev.seen_count;
+    meta.textContent = dev.address + " · seen " + count + "× · RSSI " +
+      rssi + " · " + seen;
+
+    const input = document.createElement("input");
+    input.placeholder = "Owner / comment";
+    input.value = dev.comment || "";
+    input.dataset.address = dev.address;
+    input.dataset.saved = dev.comment || "";
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") input.blur();
+    });
+    input.addEventListener("blur", () => {
+      if (input.value !== input.dataset.saved) saveBtComment(input);
+    });
+
+    row.append(name, meta, input);
+    list.appendChild(row);
+  }
+}
+
+async function loadBluetooth() {
+  try {
+    const data = await api("/api/bluetooth");
+    renderBluetooth(data.devices);
+  } catch (e) {
+    setStatus("Failed to load Bluetooth devices: " + e.message, "error");
+  }
+}
+
+async function saveBtComment(input) {
+  const address = input.dataset.address;
+  const comment = input.value;
+  try {
+    const data = await api(
+      "/api/bluetooth/" + encodeURIComponent(address) + "/comment",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: comment }),
+      }
+    );
+    input.dataset.saved = comment;
+    if (data.device) input.value = data.device.comment || "";
+    setStatus("Bluetooth comment saved", "ok");
+  } catch (e) {
+    setStatus("Could not save comment: " + e.message, "error");
+  }
+}
+
+function btInputFocused() {
+  const active = document.activeElement;
+  return active && active.tagName === "INPUT" && active.closest("#btList");
+}
+
+async function loadGithubStatus() {
+  try {
+    const data = await api("/api/github/status");
+    githubConfigured = !!data.configured;
+    $("#githubStatus").textContent =
+      (githubConfigured ? "Token configured" : "No token configured") +
+      " · " + data.repo;
+    $("#downloadGithubBtn").disabled = !githubConfigured;
+  } catch (e) {
+    setStatus("Could not read GitHub status: " + e.message, "error");
+  }
+}
+
+function setGithubConfigured(configured, repo) {
+  githubConfigured = configured;
+  $("#githubStatus").textContent =
+    (configured ? "Token configured" : "No token configured") +
+    (repo ? " · " + repo : "");
+  $("#downloadGithubBtn").disabled = !configured;
+}
+
+async function restartServer() {
+  if (!confirm("Restart the server now?")) return;
+  setStatus("Restarting server…");
+  try {
+    await api("/api/server/restart", { method: "POST" });
+  } catch (e) {
+    // The connection often drops while the process re-execs; poll instead.
+  }
+  await waitForServerBack();
+}
+
+async function waitForServerBack() {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    try {
+      const response = await fetch("/api/health", { cache: "no-store" });
+      if (response.ok) {
+        window.location.reload();
+        return;
+      }
+    } catch (e) {
+      // still down / restarting
+    }
+  }
+  setStatus("Server did not come back; check its logs", "error");
+}
+
+function renderGallery() {
+  const g = $("#gallery");
+  const list = visibleImages();
+  g.innerHTML = "";
+  if (!images.length) {
+    g.innerHTML = '<div class="empty">No images yet. Upload some, or build a portrait composite.</div>';
+    return;
+  }
+  if (!list.length) {
+    g.innerHTML = '<div class="empty">No images match the selected tags.</div>';
+    return;
+  }
+  for (const img of list) {
+    const card = document.createElement("div");
+    const isShown = frameOnline && shownId !== null && img.id === shownId;
+    card.className = "card" + (selected.has(img.id) ? " selected" : "") +
+      (isShown ? " onframe" : "");
+    card.dataset.id = img.id;
+    card.draggable = true;
+    const tagHtml = img.tags.map((t) =>
+      '<span class="tag">' + escapeHtml(t) +
+      '<button class="tag-x" data-id="' + img.id + '" data-tag="' + escapeHtml(t) + '" title="Remove tag">×</button></span>'
+    ).join("");
+    card.innerHTML =
+      '<div class="imgwrap">' +
+        (isShown ? '<span class="onframe-badge">▶ On frame</span>' : "") +
+        '<img src="' + img.thumb + '" loading="lazy" alt=""></div>' +
+      '<div class="meta">' +
+        '<div class="name" title="' + escapeHtml(img.name) + '">' + escapeHtml(img.name || "untitled") + "</div>" +
+        '<div class="dims">' + img.width + "×" + img.height + "</div>" +
+        '<div class="tags" data-id="' + img.id + '">' + tagHtml +
+          '<button class="tag-add" data-id="' + img.id + '">+ tag</button>' +
+        "</div>" +
+      "</div>" +
+      '<div class="actions">' +
+        '<button data-act="display" data-id="' + img.id + '">Show on frame</button>' +
+        '<button data-act="select" data-id="' + img.id + '">' + (selected.has(img.id) ? "Deselect" : "Select") + "</button>" +
+        '<button data-act="delete" data-id="' + img.id + '" class="danger">Delete</button>' +
+      "</div>";
+    g.appendChild(card);
+  }
+}
+
+function updateBar() {
+  $("#selCount").textContent = selected.size;
+  $("#combineBar").classList.toggle("hidden", selected.size === 0);
+}
+
+async function loadImages() {
+  try {
+    const data = await api("/api/images");
+    images = data.images;
+    renderGallery();
+    renderTagBar();
+  } catch (e) {
+    setStatus("Failed to load images: " + e.message, "error");
+  }
+}
+
+async function loadFrameState() {
+  try {
+    const data = await api("/api/frame/current");
+    $("#interval").value = data.interval_seconds;
+    selectedTags = new Set((data.filter && data.filter.tags) || []);
+    excludedTags = new Set((data.filter && data.filter.exclude_tags) || []);
+    matchAll = data.filter ? data.filter.match_all : true;
+    shownId = data.shown_image_id ?? null;
+    frameOnline = !!data.online;
+    updateFrameStatus();
+    $("#matchMode").value = matchAll ? "all" : "any";
+    $("#randomOrder").checked = !!data.random;
+    $("#showClock").checked = !!data.show_clock;
+    $("#blurBackground").checked = !!data.blur_background;
+    renderRecommendations(data.version_info);
+    enabledTransitions = new Set(data.transitions || []);
+    renderTransitionPanel();
+    renderUpdateInfo(data.update);
+    renderTagBar();
+    renderGallery();
+  } catch (e) { /* leave defaults */ }
+}
+
+async function refreshShown() {
+  try {
+    const data = await api("/api/frame/status");
+    const next = data.shown_image_id ?? null;
+    const nextOnline = !!data.online;
+    if ((next !== shownId || nextOnline !== frameOnline) && !draggedCard) {
+      const previous = shownId;
+      shownId = next;
+      frameOnline = nextOnline;
+      updateFrameStatus();
+      updateShownBadge(previous, frameOnline ? shownId : null);
+    }
+    renderUpdateInfo(data.update);
+    renderRecommendations(data.version_info);
+  } catch (e) { /* frame state is optional here */ }
+}
+
+// Move the "On frame" marker without rebuilding the gallery (which would
+// reload every thumbnail and make the page flash).
+function updateShownBadge(previousId, nextId) {
+  for (const id of [previousId, nextId]) {
+    if (id === null) continue;
+    const card = document.querySelector('.card[data-id="' + id + '"]');
+    if (!card) continue;
+    const wrap = card.querySelector(".imgwrap");
+    const badge = wrap ? wrap.querySelector(".onframe-badge") : null;
+    if (id === nextId) {
+      card.classList.add("onframe");
+      if (wrap && !badge) {
+        const el = document.createElement("span");
+        el.className = "onframe-badge";
+        el.textContent = "▶ On frame";
+        wrap.prepend(el);
+      }
+    } else {
+      card.classList.remove("onframe");
+      if (badge) badge.remove();
+    }
+  }
+}
+
+// Decide whether the dragged card goes after the hovered one. Cards in the
+// same grid row are compared horizontally; cards in different rows vertically.
+function dropsAfter(target, dragged, pointerX, pointerY) {
+  const sameRow = Math.abs(
+    (dragged.top + dragged.height / 2) - (target.top + target.height / 2)
+  ) < target.height / 2;
+  return sameRow
+    ? pointerX > target.left + target.width / 2
+    : pointerY > target.top + target.height / 2;
+}
+
+async function saveOrder(visibleIds) {
+  const visibleSet = new Set(visibleIds);
+  let visibleIndex = 0;
+  // Put the visible cards back into their slots in the full library order, so
+  // dragging inside a tag filter keeps the hidden photos where they were.
+  const fullOrder = images.map((img) =>
+    visibleSet.has(img.id) ? visibleIds[visibleIndex++] : img.id);
+  const byId = new Map(images.map((img) => [img.id, img]));
+  try {
+    await api("/api/images/order", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image_ids: fullOrder }),
+    });
+    images = fullOrder.map((id) => byId.get(id));
+    setStatus("Order saved", "ok");
+  } catch (e) {
+    setStatus("Could not save order: " + e.message, "error");
+    await loadImages();
+  }
+}
+
+async function saveTags(id, tags) {
+  try {
+    await api("/api/images/" + id + "/tags", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tags: tags }),
+    });
+    await loadImages();
+  } catch (e) {
+    setStatus("Tag save failed: " + e.message, "error");
+  }
+}
+
+function removeTag(id, tag) {
+  const img = images.find((i) => i.id === id);
+  if (!img) return;
+  saveTags(id, img.tags.filter((t) => t !== tag));
+}
+
+function beginAddTag(id) {
+  const container = document.querySelector('.tags[data-id="' + id + '"]');
+  if (!container || container.querySelector(".tag-input")) return;
+  const addBtn = container.querySelector(".tag-add");
+  if (!addBtn) return;
+  const input = document.createElement("input");
+  input.className = "tag-input";
+  input.placeholder = "add tags";
+  addBtn.replaceWith(input);
+  input.focus();
+  let done = false;
+  const commit = () => {
+    if (done) return;
+    done = true;
+    const img = images.find((i) => i.id === id);
+    if (!img) return;
+    const next = [...img.tags];
+    for (const raw of input.value.split(/[,;]/)) {
+      const t = raw.trim().toLowerCase();
+      if (t && !next.includes(t)) next.push(t);
+    }
+    if (input.value.trim()) saveTags(id, next);
+    else renderGallery();
+  };
+  input.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") commit();
+    else if (ev.key === "Escape") { done = true; renderGallery(); }
+  });
+  input.addEventListener("blur", commit);
+}
+
+$("#fileInput").addEventListener("change", async (e) => {
+  const files = e.target.files;
+  if (!files.length) return;
+  const fd = new FormData();
+  for (const f of files) fd.append("files", f);
+  try {
+    setStatus("Uploading " + files.length + " image(s)…");
+    await api("/api/images", { method: "POST", body: fd });
+    setStatus("Uploaded " + files.length + " image(s)", "ok");
+    await loadImages();
+  } catch (err) {
+    setStatus("Upload failed: " + err.message, "error");
+  }
+  e.target.value = "";
+});
+
+$("#apkInput").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append("apk", file);
+  try {
+    setStatus("Uploading update…");
+    const data = await api("/api/update", { method: "POST", body: fd });
+    renderUpdateInfo(data.update);
+    setStatus("Update pushed — approve the install on the frame", "ok");
+  } catch (err) {
+    setStatus("Update push failed: " + err.message, "error");
+  }
+  e.target.value = "";
+});
+
+$("#cancelUpdateBtn").addEventListener("click", async () => {
+  if (!confirm("Cancel the pending update?")) return;
+  try {
+    const data = await api("/api/update/cancel", { method: "POST" });
+    renderUpdateInfo(data.update);
+    setStatus("Update canceled", "ok");
+  } catch (err) {
+    setStatus("Cancel failed: " + err.message, "error");
+  }
+});
+
+$("#bluetoothBtn").addEventListener("click", () => {
+  const panel = $("#bluetoothPanel");
+  const opening = panel.classList.contains("hidden");
+  panel.classList.toggle("hidden");
+  if (opening) {
+    loadBluetooth();
+    btInterval = setInterval(() => {
+      if (!btInputFocused()) loadBluetooth();
+    }, 15000);
+  } else if (btInterval) {
+    clearInterval(btInterval);
+    btInterval = null;
+  }
+});
+
+$("#btRefreshBtn").addEventListener("click", () => {
+  loadBluetooth();
+});
+
+$("#githubBtn").addEventListener("click", () => {
+  const panel = $("#githubPanel");
+  const opening = panel.classList.contains("hidden");
+  panel.classList.toggle("hidden");
+  if (opening) loadGithubStatus();
+});
+
+$("#saveGithubTokenBtn").addEventListener("click", async () => {
+  const token = $("#githubToken").value.trim();
+  if (!token) {
+    setStatus("Enter a GitHub token first", "error");
+    return;
+  }
+  try {
+    const data = await api("/api/github/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: token }),
+    });
+    $("#githubToken").value = "";
+    setGithubConfigured(!!data.configured, data.repo);
+    setStatus("GitHub token saved", "ok");
+  } catch (e) {
+    setStatus("Could not save GitHub token: " + e.message, "error");
+  }
+});
+
+$("#clearGithubTokenBtn").addEventListener("click", async () => {
+  if (!confirm("Clear the stored GitHub token?")) return;
+  try {
+    const data = await api("/api/github/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: "" }),
+    });
+    setGithubConfigured(!!data.configured, data.repo);
+    setStatus("GitHub token cleared", "ok");
+  } catch (e) {
+    setStatus("Could not clear GitHub token: " + e.message, "error");
+  }
+});
+
+$("#downloadGithubBtn").addEventListener("click", async () => {
+  $("#downloadGithubBtn").disabled = true;
+  setStatus("Downloading latest GitHub build…");
+  try {
+    const data = await api("/api/github/download", { method: "POST" });
+    renderUpdateInfo(data.update);
+    const name = data.update && data.update.name ? data.update.name : "update";
+    setStatus("Queued " + name + " — the frame will install it", "ok");
+  } catch (e) {
+    setStatus("GitHub download failed: " + e.message, "error");
+  } finally {
+    $("#downloadGithubBtn").disabled = !githubConfigured;
+  }
+});
+
+$("#restartServerBtn").addEventListener("click", restartServer);
+
+$("#restartFrameBtn").addEventListener("click", async () => {
+  if (!confirm("Restart the frame app now?")) return;
+  try {
+    await api("/api/frame/restart", { method: "POST" });
+    setStatus(
+      frameOnline ? "Frame restart requested" : "Frame is offline; restart queued",
+      "ok"
+    );
+  } catch (e) {
+    setStatus("Could not restart frame: " + e.message, "error");
+  }
+});
+
+$("#recommendations").addEventListener("click", (e) => {
+  if (e.target.closest("#restartFromRecommendation")) {
+    restartServer();
+  }
+});
+
+$("#slideshowBtn").addEventListener("click", async () => {
+  const interval = parseInt($("#interval").value, 10) || 30;
+  const tags = [...selectedTags];
+  const excludeTags = [...excludedTags];
+  const randomOrder = $("#randomOrder").checked;
+  try {
+    await api("/api/frame/slideshow", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        interval_seconds: interval,
+        tags: tags,
+        exclude_tags: excludeTags,
+        match_all: matchAll,
+        random: randomOrder,
+      }),
+    });
+    const orderText = randomOrder ? "random order" : "gallery order";
+    const parts = [tags.length ? "tags: " + tags.join(", ") : "all images"];
+    if (excludeTags.length) parts.push("excluding: " + excludeTags.join(", "));
+    setStatus(
+      "Slideshow started (" + parts.join("; ") + ") — " +
+        interval + "s, " + orderText,
+      "ok"
+    );
+  } catch (err) {
+    setStatus("Failed: " + err.message, "error");
+  }
+});
+
+$("#matchMode").addEventListener("change", () => {
+  matchAll = $("#matchMode").value === "all";
+  renderGallery();
+});
+
+$("#showClock").addEventListener("change", async () => {
+  const showClock = $("#showClock").checked;
+  try {
+    await api("/api/frame/clock", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ show_clock: showClock }),
+    });
+    setStatus(showClock ? "Clock shown" : "Clock hidden", "ok");
+  } catch (err) {
+    setStatus("Could not change clock: " + err.message, "error");
+    $("#showClock").checked = !showClock;
+  }
+});
+
+$("#blurBackground").addEventListener("change", async () => {
+  const blur = $("#blurBackground").checked;
+  try {
+    await api("/api/frame/blur", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ blur_background: blur }),
+    });
+    setStatus(blur ? "Blurred background enabled" : "Blurred background disabled", "ok");
+  } catch (err) {
+    setStatus("Could not change background: " + err.message, "error");
+    $("#blurBackground").checked = !blur;
+  }
+});
+
+$("#transitionBtn").addEventListener("click", () => {
+  $("#transitionPanel").classList.toggle("hidden");
+});
+
+$("#transitionPanel").addEventListener("change", (e) => {
+  if (!e.target.matches("input[data-transition]")) return;
+  clearTimeout(transitionSaveTimer);
+  transitionSaveTimer = setTimeout(saveTransitions, 250);
+});
+
+async function saveTransitions() {
+  const list = [...$("#transitionPanel").querySelectorAll("input[data-transition]:checked")]
+    .map((el) => el.dataset.transition);
+  try {
+    const data = await api("/api/frame/transitions", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transitions: list }),
+    });
+    enabledTransitions = new Set(data.transitions || []);
+    setStatus(enabledTransitions.size
+      ? "Transitions saved"
+      : "All transitions enabled", "ok");
+  } catch (err) {
+    setStatus("Could not save transitions: " + err.message, "error");
+    renderTransitionPanel();
+  }
+}
+
+$("#clearFilterBtn").addEventListener("click", () => {
+  selectedTags.clear();
+  renderTagBar();
+  renderGallery();
+});
+
+$("#clearExcludeBtn").addEventListener("click", () => {
+  excludedTags.clear();
+  renderTagBar();
+  renderGallery();
+});
+
+$("#gallery").addEventListener("click", async (e) => {
+  const xBtn = e.target.closest(".tag-x");
+  if (xBtn) { removeTag(Number(xBtn.dataset.id), xBtn.dataset.tag); return; }
+  const addBtn = e.target.closest(".tag-add");
+  if (addBtn) { beginAddTag(Number(addBtn.dataset.id)); return; }
+
+  const btn = e.target.closest("button[data-act]");
+  if (!btn) return;
+  const id = Number(btn.dataset.id);
+  const act = btn.dataset.act;
+  try {
+    if (act === "display") {
+      await api("/api/images/" + id + "/display", { method: "POST" });
+      setStatus("Frame is now showing that image", "ok");
+    } else if (act === "select") {
+      if (selected.has(id)) selected.delete(id); else selected.add(id);
+      renderGallery();
+      updateBar();
+    } else if (act === "delete") {
+      if (!confirm("Delete this image?")) return;
+      await api("/api/images/" + id, { method: "DELETE" });
+      selected.delete(id);
+      updateBar();
+      setStatus("Deleted", "ok");
+      await loadImages();
+    }
+  } catch (err) {
+    setStatus("Error: " + err.message, "error");
+  }
+});
+
+$("#gallery").addEventListener("dragstart", (e) => {
+  const card = e.target.closest(".card");
+  if (!card) return;
+  // Do not start a drag from buttons or form fields inside the card.
+  if (e.target.closest("button, input, textarea, select")) {
+    e.preventDefault();
+    return;
+  }
+  draggedCard = card;
+  orderDirty = false;
+  card.classList.add("dragging");
+  e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData("text/plain", card.dataset.id);
+});
+
+$("#gallery").addEventListener("dragover", (e) => {
+  if (!draggedCard) return;
+  const card = e.target.closest(".card");
+  if (!card || card === draggedCard) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "move";
+  const after = dropsAfter(
+    card.getBoundingClientRect(),
+    draggedCard.getBoundingClientRect(),
+    e.clientX,
+    e.clientY,
+  );
+  if (after) card.after(draggedCard);
+  else card.before(draggedCard);
+  orderDirty = true;
+});
+
+$("#gallery").addEventListener("drop", (e) => {
+  if (draggedCard) e.preventDefault();
+});
+
+$("#gallery").addEventListener("dragend", () => {
+  if (!draggedCard) return;
+  draggedCard.classList.remove("dragging");
+  draggedCard = null;
+  if (!orderDirty) return;
+  const visibleIds = [...$("#gallery").querySelectorAll(".card")]
+    .map((card) => Number(card.dataset.id));
+  saveOrder(visibleIds);
+});
+
+$("#clearSelBtn").addEventListener("click", () => {
+  selected.clear();
+  renderGallery();
+  updateBar();
+});
+
+$("#combineBtn").addEventListener("click", async () => {
+  const ids = [...selected];
+  if (ids.length < 1) return setStatus("Select at least one image", "error");
+  if (ids.length > 12) return setStatus("Select at most 12 images", "error");
+  try {
+    await api("/api/edit/combine", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image_ids: ids }),
+    });
+    selected.clear();
+    updateBar();
+    setStatus("Created portrait composite", "ok");
+    await loadImages();
+  } catch (err) {
+    setStatus("Combine failed: " + err.message, "error");
+  }
+});
+
+$("#fitBtn").addEventListener("click", async () => {
+  if (selected.size !== 1) return setStatus("Select exactly one image to fit", "error");
+  const id = [...selected][0];
+  try {
+    await api("/api/edit/fit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image_id: id }),
+    });
+    selected.clear();
+    updateBar();
+    setStatus("Created portrait fit", "ok");
+    await loadImages();
+  } catch (err) {
+    setStatus("Fit failed: " + err.message, "error");
+  }
+});
+
+(async () => {
+  renderTransitionPanel();
+  updateFrameStatus();
+  await loadImages();
+  await loadFrameState();
+  setInterval(refreshShown, 5000);
+})();
+</script>
+</body>
+</html>
