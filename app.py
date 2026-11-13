@@ -49,6 +49,8 @@ STATIC_DIR = BASE_DIR / "static"
 DB_PATH = DATA_DIR / "frame.db"
 UPDATE_PATH = DATA_DIR / "update.apk"
 GITHUB_TOKEN_PATH = DATA_DIR / "github_token"
+GITHUB_STAGED_PATH = DATA_DIR / "github_latest.apk"
+GITHUB_STAGED_META = DATA_DIR / "github_latest.json"
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 THUMBS_DIR.mkdir(parents=True, exist_ok=True)
@@ -67,7 +69,7 @@ MAX_TAG_LENGTH = 40
 
 # Bump this together with the VERSION file when the server code changes. If the
 # file is newer than this constant, the running process is out of date.
-SERVER_VERSION = 11
+SERVER_VERSION = 12
 VERSION_PATH = BASE_DIR / "VERSION"
 
 # Must match the Transition enum names in the Android app.
@@ -404,6 +406,21 @@ def rename_in_filters(db, old: str, new: str | None) -> None:
         updated[column] = json.dumps(replaced)
     for column, value in updated.items():
         db.execute(f"UPDATE frame_state SET {column} = ? WHERE id = ?", (value, FRAME_ID))
+
+    # Keep the "tags every upload gets" templates in step too; otherwise a
+    # renamed/deleted tag is silently recreated by the next upload.
+    templates = upload_tag_templates(db)
+    new_templates: list[str] = []
+    changed = False
+    for template in templates:
+        if template == old:
+            changed = True
+            if new and new not in new_templates:
+                new_templates.append(new)
+        elif template not in new_templates:
+            new_templates.append(template)
+    if changed:
+        put_setting(db, "upload_tags", json.dumps(new_templates))
 
 
 def all_tags(db) -> list[dict]:
@@ -1017,9 +1034,34 @@ class GithubTokenRequest(BaseModel):
     token: str = ""
 
 
+def staged_github_update() -> dict | None:
+    if not GITHUB_STAGED_PATH.is_file():
+        return None
+    try:
+        meta = json.loads(GITHUB_STAGED_META.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return meta if isinstance(meta, dict) else None
+
+
+def write_staged_github_meta(meta: dict) -> None:
+    tmp = GITHUB_STAGED_META.with_name(GITHUB_STAGED_META.name + ".tmp")
+    tmp.write_text(json.dumps(meta), encoding="utf-8")
+    tmp.replace(GITHUB_STAGED_META)
+
+
+def clear_staged_github_update() -> None:
+    GITHUB_STAGED_PATH.unlink(missing_ok=True)
+    GITHUB_STAGED_META.unlink(missing_ok=True)
+
+
 @app.get("/api/github/status")
 def api_github_status():
-    return {"configured": github_token() is not None, "repo": GITHUB_REPO}
+    return {
+        "configured": github_token() is not None,
+        "repo": GITHUB_REPO,
+        "downloaded": staged_github_update(),
+    }
 
 
 @app.post("/api/github/token")
@@ -1056,20 +1098,56 @@ def api_github_download():
         with apk_path.open("rb") as f:
             while chunk := f.read(1024 * 1024):
                 hasher.update(chunk)
-        apk_path.replace(UPDATE_PATH)
-        update = record_update(name, hasher.hexdigest(), size)
+        apk_path.replace(GITHUB_STAGED_PATH)
+        downloaded = {
+            "name": name,
+            "sha256": hasher.hexdigest(),
+            "size": size,
+            "artifact_id": artifact.get("id"),
+            "created_at": artifact.get("created_at"),
+        }
+        write_staged_github_meta(downloaded)
     finally:
         download.unlink(missing_ok=True)
         extracted.unlink(missing_ok=True)
     return {
         "ok": True,
-        "update": update,
+        "downloaded": downloaded,
         "artifact": {
             "name": artifact.get("name"),
             "id": artifact.get("id"),
             "created_at": artifact.get("created_at"),
         },
     }
+
+
+@app.post("/api/github/push")
+def api_github_push():
+    """Queue the APK fetched by the last Download latest build action."""
+    meta = staged_github_update()
+    if meta is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No downloaded build; use Download latest build first",
+        )
+    name = meta.get("name") or "update.apk"
+    size = GITHUB_STAGED_PATH.stat().st_size
+    if size <= 0 or size > MAX_APK_BYTES:
+        clear_staged_github_update()
+        raise HTTPException(status_code=400, detail="Downloaded APK has an invalid size")
+    hasher = hashlib.sha256()
+    with GITHUB_STAGED_PATH.open("rb") as f:
+        while chunk := f.read(1024 * 1024):
+            hasher.update(chunk)
+    digest = hasher.hexdigest()
+    expected = meta.get("sha256")
+    if expected and expected.lower() != digest:
+        clear_staged_github_update()
+        raise HTTPException(status_code=409, detail="Downloaded APK checksum mismatch")
+    GITHUB_STAGED_PATH.replace(UPDATE_PATH)
+    GITHUB_STAGED_META.unlink(missing_ok=True)
+    update = record_update(name, digest, size)
+    return {"ok": True, "update": update}
 
 
 @app.post("/api/update")
@@ -1237,9 +1315,10 @@ class RenameTagRequest(BaseModel):
 def api_rename_tag(req: RenameTagRequest):
     """Rename a tag everywhere. Renaming onto an existing tag merges the two."""
     old = normalize_tag(req.name)
-    new = normalize_tag(req.new_name)
-    if not new:
+    new_names = clean_tags([req.new_name])
+    if not new_names:
         raise HTTPException(status_code=400, detail="New tag name is empty")
+    new = new_names[0]
     with db_conn() as db:
         old_id = tag_id(db, old)
         if old_id is None:

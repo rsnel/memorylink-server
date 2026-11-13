@@ -63,8 +63,9 @@ once and left alone.
   upload date (`2026`, `2026-11`, `2026-11-13`).
 - **Tags** — rename a tag everywhere (renaming onto an existing tag merges the
   two) or remove it from all photos. A running slideshow filter follows along.
-- **Frame software** — push a signed APK to the frame, or store a GitHub token
-  and download and queue the latest release APK artifact from GitHub Actions.
+- **Frame software** — push a signed APK to the frame, or store a GitHub token,
+  download the latest release APK artifact and then push that downloaded build
+  separately.
   The panel shows pending/installing/installed/failed status and offers
   **Cancel update** while the install can still be withdrawn. **Restart frame**
   asks the frame app to restart itself (settings and image cache are preserved).
@@ -100,9 +101,10 @@ and combined again like any other.
 | GET | `/api/update` | metadata/status of the APK currently queued for the frame |
 | POST | `/api/update` | upload an APK (multipart, field `apk`) and queue it |
 | POST | `/api/update/cancel` | withdraw the queued APK so the frame won't install it |
-| GET | `/api/github/status` | whether a GitHub token is stored, and the repo name |
+| GET | `/api/github/status` | token/repo status and the currently downloaded build |
 | POST | `/api/github/token` | `{token}` → store (mode 600) or clear with an empty token |
-| POST | `/api/github/download` | download the latest release APK artifact and queue it |
+| POST | `/api/github/download` | download the latest release APK artifact into staging (does not queue it) |
+| POST | `/api/github/push` | queue the staged download as the frame update |
 | POST | `/api/frame/update-result` | `{update_id, status, message}` → record installing/installed/failed |
 | GET | `/update.apk` | download the queued APK |
 | GET | `/images/{filename}` | full image; scaled down to at most 1080×1920 and cached in `data/scaled/` |
@@ -194,18 +196,20 @@ permission.
 
 ## Downloading builds from GitHub Actions
 
-The **GitHub** panel can queue the newest release artifact without downloading it
+The **GitHub** panel can fetch the newest release artifact without downloading it
 manually. Supply a token with access to Actions artifacts (a classic token with
 `repo` scope, or a fine-grained token with **Actions: Read**), save it, and press
-**Download latest build**. The token is stored in `data/github_token` with mode
-`600` and is never sent back to the browser. **Clear** removes it.
+**Download latest build**. This only stages the APK on the server; it does not
+touch the frame. The separate **Push downloaded build** button in the frame
+software section then queues it through the normal update flow. The token is
+stored in `data/github_token` with mode `600` and is never sent back to the
+browser. **Clear** removes it.
 
 The server looks at `rsnel/memorylink-app` (override with
 `MEMORYLINK_GITHUB_REPO`), selects the highest-numbered non-expired
-`MemoryLink-<build>.apk` release artifact on `main`, downloads it, and queues it
-through the normal update flow. Debug artifacts are ignored. GitHub's artifact
-download redirects to a signed URL, so the Authorization header is stripped on
-that redirect.
+`MemoryLink-<build>.apk` release artifact on `main`, and downloads it. Debug
+artifacts are ignored. GitHub's artifact download redirects to a signed URL, so
+the Authorization header is stripped on that redirect.
 
 Since the web UI is unauthenticated, keep it behind your reverse proxy's access
 control; anyone who can reach it can use the stored token or replace it.

@@ -415,6 +415,10 @@
         <label class="btn">Push update APK<input id="apkInput" type="file" accept=".apk,application/vnd.android.package-archive" hidden></label>
         <button id="cancelUpdateBtn" class="danger" type="button" hidden>Cancel update</button>
       </div>
+      <div class="row">
+        <button id="pushDownloadedBtn" type="button" disabled>Push downloaded build</button>
+        <span id="githubDownloaded" class="hint"></span>
+      </div>
       <div>
         <div>GitHub Actions build</div>
         <div id="githubStatus" class="hint">Checking…</div>
@@ -481,6 +485,7 @@ let orderDirty = false;
 let transitionSaveTimer = null;
 let btInterval = null;
 let githubConfigured = false;
+let githubDownloaded = null;
 
 const escapeHtml = (s) => String(s ?? "").replace(/[&<>"']/g,
   (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -1006,10 +1011,19 @@ function setGithubConfigured(configured, repo) {
   $("#downloadGithubBtn").disabled = !configured;
 }
 
+function setGithubDownloaded(downloaded) {
+  githubDownloaded = downloaded || null;
+  $("#pushDownloadedBtn").disabled = !githubDownloaded;
+  $("#githubDownloaded").textContent = githubDownloaded
+    ? "Downloaded: " + (githubDownloaded.name || "build")
+    : "";
+}
+
 async function loadGithubStatus() {
   try {
     const data = await api("/api/github/status");
     setGithubConfigured(!!data.configured, data.repo);
+    setGithubDownloaded(data.downloaded);
   } catch (e) {
     $("#githubStatus").textContent = "Could not read GitHub status";
   }
@@ -1246,8 +1260,12 @@ function beginAddTag(id) {
     if (done) return;
     done = true;
     const img = images.find((i) => i.id === id);
+    if (!img) {
+      renderGallery();
+      return;
+    }
     const added = commit ? parseTags(input.value).filter((t) => !img.tags.includes(t)) : [];
-    if (img && added.length) saveTags(id, [...img.tags, ...added]);
+    if (added.length) saveTags(id, [...img.tags, ...added]);
     else renderGallery();
   };
   input.addEventListener("keydown", (ev) => {
@@ -1407,8 +1425,12 @@ $("#tagManager").addEventListener("click", async (e) => {
   try {
     if (btn.dataset.tagact === "rename") {
       const next = prompt("Rename tag “" + name + "” to:", name);
-      if (next === null || !parseTags(next).length || parseTags(next)[0] === name) return;
-      const data = await sendJson("/api/tags/rename", "POST", { name: name, new_name: next });
+      if (next === null) return;
+      const parsed = parseTags(next);
+      if (!parsed.length || parsed[0] === name) return;
+      const data = await sendJson("/api/tags/rename", "POST", {
+        name: name, new_name: parsed[0],
+      });
       // Keep the filter on this page pointing at the renamed tag.
       for (const set of [includeTags, excludeTags]) {
         if (set.delete(name)) set.add(data.name);
@@ -1423,6 +1445,7 @@ $("#tagManager").addEventListener("click", async (e) => {
     await loadImages();
     await syncVersion();
     await refreshStatus();
+    if (!$("#drawer").hidden) await loadSettings();
   } catch (err) {
     toast(err.message, "error");
   }
@@ -1487,12 +1510,26 @@ $("#downloadGithubBtn").addEventListener("click", async () => {
   toast("Downloading the latest GitHub build…", "busy");
   try {
     const data = await api("/api/github/download", { method: "POST" });
-    renderUpdateInfo(data.update);
-    toast("Queued " + ((data.update && data.update.name) || "update") + " — the frame will install it", "ok");
+    setGithubDownloaded(data.downloaded);
+    const name = data.downloaded && data.downloaded.name ? data.downloaded.name : "build";
+    toast("Downloaded " + name + " — press Push downloaded build to send it", "ok");
   } catch (e) {
     toast("GitHub download failed: " + e.message, "error");
   } finally {
     $("#downloadGithubBtn").disabled = !githubConfigured;
+  }
+});
+
+$("#pushDownloadedBtn").addEventListener("click", async () => {
+  if (!confirm("Push the downloaded build to the frame?")) return;
+  try {
+    const data = await api("/api/github/push", { method: "POST" });
+    renderUpdateInfo(data.update);
+    setGithubDownloaded(null);
+    const name = data.update && data.update.name ? data.update.name : "update";
+    toast("Queued " + name + " — the frame will install it", "ok");
+  } catch (e) {
+    toast("Could not push the downloaded build: " + e.message, "error");
   }
 });
 
