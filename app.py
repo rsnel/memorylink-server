@@ -69,7 +69,7 @@ MAX_TAG_LENGTH = 40
 
 # Bump this together with the VERSION file when the server code changes. If the
 # file is newer than this constant, the running process is out of date.
-SERVER_VERSION = 12
+SERVER_VERSION = 13
 VERSION_PATH = BASE_DIR / "VERSION"
 
 # Must match the Transition enum names in the Android app.
@@ -164,6 +164,8 @@ def init_db() -> None:
             """
             CREATE TABLE IF NOT EXISTS frame_state (
                 id TEXT PRIMARY KEY,
+                name TEXT,
+                created_at TEXT,
                 mode TEXT NOT NULL DEFAULT 'slideshow',
                 current_image_id INTEGER,
                 interval_seconds INTEGER NOT NULL DEFAULT 30,
@@ -195,6 +197,13 @@ def init_db() -> None:
         )
         # Migrate existing databases that predate the newer columns.
         cols = {r["name"] for r in db.execute("PRAGMA table_info(frame_state)").fetchall()}
+        if "name" not in cols:
+            db.execute("ALTER TABLE frame_state ADD COLUMN name TEXT")
+        if "created_at" not in cols:
+            db.execute("ALTER TABLE frame_state ADD COLUMN created_at TEXT")
+        db.execute(
+            "UPDATE frame_state SET created_at = ? WHERE created_at IS NULL", (now(),)
+        )
         if "tag_filter" not in cols:
             db.execute("ALTER TABLE frame_state ADD COLUMN tag_filter TEXT NOT NULL DEFAULT '[]'")
         if "exclude_tags" not in cols:
@@ -261,15 +270,69 @@ def init_db() -> None:
         db.execute(
             """
             INSERT OR IGNORE INTO frame_state
-                (id, mode, current_image_id, interval_seconds, version, tag_filter, match_all)
-            VALUES (?, 'slideshow', NULL, ?, 0, '[]', 1)
+                (id, mode, current_image_id, interval_seconds, version,
+                 tag_filter, match_all, created_at)
+            VALUES (?, 'slideshow', NULL, ?, 0, '[]', 1, ?)
             """,
-            (FRAME_ID, DEFAULT_INTERVAL),
+            (FRAME_ID, DEFAULT_INTERVAL, now()),
         )
 
 
-def bump_version(db) -> None:
-    db.execute("UPDATE frame_state SET version = version + 1 WHERE id = ?", (FRAME_ID,))
+def normalize_frame_id(value: str | None) -> str:
+    """Validate the frame identity sent by an app; empty means legacy default."""
+    if value is None:
+        return FRAME_ID
+    value = value.strip()
+    if not value:
+        return FRAME_ID
+    if not re.fullmatch(r"[A-Za-z0-9._:-]{1,64}", value):
+        raise HTTPException(status_code=400, detail="Invalid frame id")
+    return value
+
+
+def ensure_frame(db, frame_id: str = FRAME_ID) -> sqlite3.Row:
+    """Return the frame row, creating it on first contact.
+
+    The first real frame adopts the legacy singleton row so existing settings
+    survive the upgrade. Later frames get fresh rows.
+    """
+    frame_id = normalize_frame_id(frame_id)
+    if frame_id != FRAME_ID:
+        ids = [row["id"] for row in db.execute("SELECT id FROM frame_state").fetchall()]
+        if ids == [FRAME_ID]:
+            db.execute("UPDATE frame_state SET id = ? WHERE id = ?", (frame_id, FRAME_ID))
+    db.execute(
+        "INSERT OR IGNORE INTO frame_state (id, interval_seconds, created_at) "
+        "VALUES (?, ?, ?)",
+        (frame_id, DEFAULT_INTERVAL, now()),
+    )
+    return db.execute("SELECT * FROM frame_state WHERE id = ?", (frame_id,)).fetchone()
+
+
+def frame_public(state: sqlite3.Row) -> dict:
+    name = (state["name"] or "").strip()
+    short_id = "default" if state["id"] == FRAME_ID else state["id"][:8]
+    return {
+        "id": state["id"],
+        "name": name or None,
+        "short_id": short_id,
+        "display_name": name or short_id,
+        "created_at": state["created_at"],
+        "last_seen_at": state["last_seen_at"],
+        "online": frame_online(state),
+    }
+
+
+def bump_all_frames(db) -> None:
+    """The shared image library changed; wake every frame's slideshow."""
+    db.execute("UPDATE frame_state SET version = version + 1")
+
+
+def bump_version(db, frame_id: str = FRAME_ID) -> None:
+    ensure_frame(db, frame_id)
+    db.execute(
+        "UPDATE frame_state SET version = version + 1 WHERE id = ?", (frame_id,)
+    )
 
 
 def normalize_tag(name: str) -> str:
@@ -389,23 +452,27 @@ def expand_upload_tags(templates: list[str], when: datetime | None = None) -> li
 
 
 def rename_in_filters(db, old: str, new: str | None) -> None:
-    """Keep the slideshow's tag filters in step with a renamed or deleted tag."""
-    state = db.execute(
-        "SELECT tag_filter, exclude_tags FROM frame_state WHERE id = ?", (FRAME_ID,)
-    ).fetchone()
-    updated = {}
-    for column in ("tag_filter", "exclude_tags"):
-        names = json.loads(state[column] or "[]")
-        if old not in names:
-            continue
-        replaced: list[str] = []
-        for name in names:
-            name = new if name == old else name
-            if name and name not in replaced:
-                replaced.append(name)
-        updated[column] = json.dumps(replaced)
-    for column, value in updated.items():
-        db.execute(f"UPDATE frame_state SET {column} = ? WHERE id = ?", (value, FRAME_ID))
+    """Keep every frame's slideshow filter in step with a renamed/deleted tag."""
+    states = db.execute(
+        "SELECT id, tag_filter, exclude_tags FROM frame_state"
+    ).fetchall()
+    for state in states:
+        updated = {}
+        for column in ("tag_filter", "exclude_tags"):
+            names = json.loads(state[column] or "[]")
+            if old not in names:
+                continue
+            replaced: list[str] = []
+            for name in names:
+                name = new if name == old else name
+                if name and name not in replaced:
+                    replaced.append(name)
+            updated[column] = json.dumps(replaced)
+        for column, value in updated.items():
+            db.execute(
+                f"UPDATE frame_state SET {column} = ? WHERE id = ?",
+                (value, state["id"]),
+            )
 
     # Keep the "tags every upload gets" templates in step too; otherwise a
     # renamed/deleted tag is silently recreated by the next upload.
@@ -564,7 +631,7 @@ def insert_image(
         )
         if tags:
             add_image_tags(db, cur.lastrowid, tags)
-        bump_version(db)
+        bump_all_frames(db)
         row = db.execute("SELECT * FROM images WHERE id = ?", (cur.lastrowid,)).fetchone()
         return image_dict(db, row)
 
@@ -840,7 +907,7 @@ def api_reorder(req: OrderRequest):
             db.execute(
                 "UPDATE images SET position = ? WHERE id = ?", (position, image_id)
             )
-        bump_version(db)
+        bump_all_frames(db)
     return {"ok": True, "image_ids": ids}
 
 
@@ -851,7 +918,7 @@ def api_set_tags(image_id: int, req: SetTagsRequest):
         if row is None:
             raise HTTPException(status_code=404, detail="Image not found")
         tags = set_image_tags(db, image_id, req.tags)
-        bump_version(db)
+        bump_all_frames(db)
     return {"ok": True, "tags": tags}
 
 
@@ -892,23 +959,30 @@ async def api_upload(
 
 
 @app.get("/api/update")
-def api_get_update():
+def api_get_update(frame_id: str = FRAME_ID):
     with db_conn() as db:
-        state = db.execute("SELECT * FROM frame_state WHERE id = ?", (FRAME_ID,)).fetchone()
+        state = ensure_frame(db, frame_id)
     return {"update": update_dict(state)}
 
 
-def record_update(name: str, sha256: str, size: int) -> dict | None:
+def record_update(
+    name: str, sha256: str, size: int, frame_id: str = FRAME_ID
+) -> dict | None:
+    """Queue an APK for every known frame (the APK file is shared)."""
     with db_conn() as db:
-        state = db.execute("SELECT * FROM frame_state WHERE id = ?", (FRAME_ID,)).fetchone()
-        update_id = (state["update_id"] or 0) + 1
-        db.execute(
-            "UPDATE frame_state SET update_id = ?, update_name = ?, update_sha256 = ?, "
-            "update_size = ?, update_uploaded_at = ?, update_status = 'pending', "
-            "update_error = NULL, update_result_at = NULL WHERE id = ?",
-            (update_id, name, sha256, size, now(), FRAME_ID),
-        )
-        state = db.execute("SELECT * FROM frame_state WHERE id = ?", (FRAME_ID,)).fetchone()
+        state = ensure_frame(db, frame_id)
+        uploaded = now()
+        frames = db.execute("SELECT id, update_id FROM frame_state").fetchall()
+        for frame in frames:
+            update_id = (frame["update_id"] or 0) + 1
+            db.execute(
+                "UPDATE frame_state SET update_id = ?, update_name = ?, "
+                "update_sha256 = ?, update_size = ?, update_uploaded_at = ?, "
+                "update_status = 'pending', update_error = NULL, "
+                "update_result_at = NULL WHERE id = ?",
+                (update_id, name, sha256, size, uploaded, frame["id"]),
+            )
+        state = ensure_frame(db, state["id"])
         return update_dict(state)
 
 
@@ -1122,7 +1196,7 @@ def api_github_download():
 
 
 @app.post("/api/github/push")
-def api_github_push():
+def api_github_push(frame_id: str = FRAME_ID):
     """Queue the APK fetched by the last Download latest build action."""
     meta = staged_github_update()
     if meta is None:
@@ -1146,12 +1220,12 @@ def api_github_push():
         raise HTTPException(status_code=409, detail="Downloaded APK checksum mismatch")
     GITHUB_STAGED_PATH.replace(UPDATE_PATH)
     GITHUB_STAGED_META.unlink(missing_ok=True)
-    update = record_update(name, digest, size)
+    update = record_update(name, digest, size, frame_id)
     return {"ok": True, "update": update}
 
 
 @app.post("/api/update")
-async def api_push_update(apk: UploadFile = File(...)):
+async def api_push_update(apk: UploadFile = File(...), frame_id: str = FRAME_ID):
     """Store an APK and announce it to the frame as a new update."""
     tmp = UPDATE_PATH.with_name(UPDATE_PATH.name + ".tmp")
     hasher = hashlib.sha256()
@@ -1173,7 +1247,9 @@ async def api_push_update(apk: UploadFile = File(...)):
     finally:
         tmp.unlink(missing_ok=True)
 
-    update = record_update(apk.filename or "update.apk", hasher.hexdigest(), size)
+    update = record_update(
+        apk.filename or "update.apk", hasher.hexdigest(), size, frame_id
+    )
     return {"ok": True, "update": update}
 
 
@@ -1184,38 +1260,41 @@ class UpdateResultRequest(BaseModel):
 
 
 @app.post("/api/frame/update-result")
-def api_update_result(req: UpdateResultRequest):
+def api_update_result(req: UpdateResultRequest, frame_id: str = FRAME_ID):
     """Record the install state reported by the frame."""
     if req.status not in ("installing", "installed", "failed", "canceled"):
         raise HTTPException(status_code=400, detail="Invalid update status")
     with db_conn() as db:
-        state = db.execute("SELECT * FROM frame_state WHERE id = ?", (FRAME_ID,)).fetchone()
+        state = ensure_frame(db, frame_id)
         if not state["update_id"] or state["update_id"] != req.update_id:
             raise HTTPException(status_code=409, detail="Not the current update")
         error = (req.message or "")[:500] if req.status == "failed" else None
         db.execute(
             "UPDATE frame_state SET update_status = ?, update_error = ?, "
             "update_result_at = ? WHERE id = ?",
-            (req.status, error, now(), FRAME_ID),
+            (req.status, error, now(), state["id"]),
         )
-        state = db.execute("SELECT * FROM frame_state WHERE id = ?", (FRAME_ID,)).fetchone()
+        state = ensure_frame(db, state["id"])
         update = update_dict(state)
     return {"ok": True, "update": update}
 
 
 @app.post("/api/update/cancel")
-def api_cancel_update():
-    """Withdraw the queued APK so the frame will not install it."""
+def api_cancel_update(frame_id: str = FRAME_ID):
+    """Withdraw the queued APK so the selected frame will not install it."""
     with db_conn() as db:
-        state = db.execute("SELECT * FROM frame_state WHERE id = ?", (FRAME_ID,)).fetchone()
-        if not state["update_id"]:
+        state = ensure_frame(db, frame_id)
+        any_update = db.execute(
+            "SELECT 1 FROM frame_state WHERE update_id > 0 LIMIT 1"
+        ).fetchone()
+        if any_update is None:
             raise HTTPException(status_code=404, detail="No update to cancel")
         db.execute(
             "UPDATE frame_state SET update_status = 'canceled', update_error = NULL, "
-            "update_result_at = ? WHERE id = ?",
-            (now(), FRAME_ID),
+            "update_result_at = ? WHERE update_id > 0",
+            (now(),),
         )
-        state = db.execute("SELECT * FROM frame_state WHERE id = ?", (FRAME_ID,)).fetchone()
+        state = ensure_frame(db, state["id"])
         update = update_dict(state)
     return {"ok": True, "update": update}
 
@@ -1232,18 +1311,18 @@ def delete_images(ids: list[int]) -> int:
             db.execute("DELETE FROM images WHERE id = ?", (image_id,))
             db.execute(
                 "UPDATE frame_state SET current_image_id = NULL, mode = 'slideshow' "
-                "WHERE id = ? AND current_image_id = ?",
-                (FRAME_ID, image_id),
+                "WHERE current_image_id = ?",
+                (image_id,),
             )
             db.execute(
                 "UPDATE frame_state SET shown_image_id = NULL, shown_at = NULL "
-                "WHERE id = ? AND shown_image_id = ?",
-                (FRAME_ID, image_id),
+                "WHERE shown_image_id = ?",
+                (image_id,),
             )
             filenames.append(row["filename"])
         if filenames:
             drop_unused_tags(db)
-            bump_version(db)
+            bump_all_frames(db)
 
     for filename in filenames:
         for path in (DATA_DIR / filename, THUMBS_DIR / filename, SCALED_DIR / filename):
@@ -1296,7 +1375,7 @@ def api_bulk_tags(req: BulkTagRequest):
             remove_image_tags(db, image_id, remove)
             add_image_tags(db, image_id, add)
         drop_unused_tags(db)
-        bump_version(db)
+        bump_all_frames(db)
         tag_map = tags_by_image(db)
     return {
         "ok": True,
@@ -1338,7 +1417,7 @@ def api_rename_tag(req: RenameTagRequest):
                 db.execute("DELETE FROM image_tags WHERE tag_id = ?", (old_id,))
                 db.execute("DELETE FROM tags WHERE id = ?", (old_id,))
             rename_in_filters(db, old, new)
-            bump_version(db)
+            bump_all_frames(db)
     return {"ok": True, "name": new, "merged": merged}
 
 
@@ -1357,7 +1436,7 @@ def api_delete_tag(req: DeleteTagRequest):
         db.execute("DELETE FROM image_tags WHERE tag_id = ?", (tid,))
         db.execute("DELETE FROM tags WHERE id = ?", (tid,))
         rename_in_filters(db, name, None)
-        bump_version(db)
+        bump_all_frames(db)
     return {"ok": True}
 
 
@@ -1389,15 +1468,16 @@ def api_set_upload_tags(req: UploadTagsRequest):
 
 
 @app.post("/api/images/{image_id}/display")
-def api_display(image_id: int):
+def api_display(image_id: int, frame_id: str = FRAME_ID):
     with db_conn() as db:
+        state = ensure_frame(db, frame_id)
         row = db.execute("SELECT * FROM images WHERE id = ?", (image_id,)).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="Image not found")
         db.execute(
             "UPDATE frame_state SET mode = 'single', current_image_id = ?, "
             "version = version + 1 WHERE id = ?",
-            (image_id, FRAME_ID),
+            (image_id, state["id"]),
         )
     return {"ok": True, "mode": "single", "image_id": image_id}
 
@@ -1411,11 +1491,12 @@ class SlideshowRequest(BaseModel):
 
 
 @app.post("/api/frame/slideshow")
-def api_slideshow(req: SlideshowRequest):
+def api_slideshow(req: SlideshowRequest, frame_id: str = FRAME_ID):
     interval = max(5, min(3600, req.interval_seconds))
     tags = clean_tags(req.tags)
     excludes = clean_tags(req.exclude_tags)
     with db_conn() as db:
+        state = ensure_frame(db, frame_id)
         db.execute(
             "UPDATE frame_state SET mode = 'slideshow', interval_seconds = ?, "
             "tag_filter = ?, exclude_tags = ?, match_all = ?, random = ?, "
@@ -1426,7 +1507,7 @@ def api_slideshow(req: SlideshowRequest):
                 json.dumps(excludes),
                 1 if req.match_all else 0,
                 1 if req.random else 0,
-                FRAME_ID,
+                state["id"],
             ),
         )
     return {
@@ -1445,7 +1526,7 @@ class TransitionsRequest(BaseModel):
 
 
 @app.put("/api/frame/transitions")
-def api_set_transitions(req: TransitionsRequest):
+def api_set_transitions(req: TransitionsRequest, frame_id: str = FRAME_ID):
     """Choose which transition effects the frame may use (empty = all)."""
     selected: list[str] = []
     for raw in req.transitions:
@@ -1453,9 +1534,10 @@ def api_set_transitions(req: TransitionsRequest):
         if name in TRANSITIONS and name not in selected:
             selected.append(name)
     with db_conn() as db:
+        state = ensure_frame(db, frame_id)
         db.execute(
             "UPDATE frame_state SET transitions = ? WHERE id = ?",
-            (json.dumps(selected), FRAME_ID),
+            (json.dumps(selected), state["id"]),
         )
     return {"ok": True, "transitions": selected}
 
@@ -1465,11 +1547,12 @@ class ClockRequest(BaseModel):
 
 
 @app.put("/api/frame/clock")
-def api_set_clock(req: ClockRequest):
+def api_set_clock(req: ClockRequest, frame_id: str = FRAME_ID):
     with db_conn() as db:
+        state = ensure_frame(db, frame_id)
         db.execute(
             "UPDATE frame_state SET show_clock = ? WHERE id = ?",
-            (1 if req.show_clock else 0, FRAME_ID),
+            (1 if req.show_clock else 0, state["id"]),
         )
     return {"ok": True, "show_clock": req.show_clock}
 
@@ -1479,18 +1562,48 @@ class BlurRequest(BaseModel):
 
 
 @app.put("/api/frame/blur")
-def api_set_blur(req: BlurRequest):
+def api_set_blur(req: BlurRequest, frame_id: str = FRAME_ID):
     with db_conn() as db:
+        state = ensure_frame(db, frame_id)
         db.execute(
             "UPDATE frame_state SET blur_background = ? WHERE id = ?",
-            (1 if req.blur_background else 0, FRAME_ID),
+            (1 if req.blur_background else 0, state["id"]),
         )
     return {"ok": True, "blur_background": req.blur_background}
 
 
-def build_frame_state() -> dict:
+class FrameNameRequest(BaseModel):
+    name: str = ""
+
+
+@app.get("/api/frames")
+def api_frames():
+    """All frames that have contacted this server."""
     with db_conn() as db:
-        state = db.execute("SELECT * FROM frame_state WHERE id = ?", (FRAME_ID,)).fetchone()
+        rows = db.execute(
+            "SELECT * FROM frame_state ORDER BY COALESCE(created_at, ''), id"
+        ).fetchall()
+    return {"frames": [frame_public(row) for row in rows]}
+
+
+@app.put("/api/frames/{frame_id}")
+def api_set_frame_name(frame_id: str, req: FrameNameRequest):
+    """Set or clear the friendly name shown for a frame."""
+    fid = normalize_frame_id(frame_id)
+    name = " ".join(req.name.strip().split())[:80]
+    with db_conn() as db:
+        state = ensure_frame(db, fid)
+        db.execute(
+            "UPDATE frame_state SET name = ? WHERE id = ?",
+            (name or None, state["id"]),
+        )
+        state = ensure_frame(db, state["id"])
+    return {"ok": True, "frame": frame_public(state)}
+
+
+def build_frame_state(frame_id: str = FRAME_ID) -> dict:
+    with db_conn() as db:
+        state = ensure_frame(db, frame_id)
         tag_filter = json.loads(state["tag_filter"] or "[]")
         exclude_tags = json.loads(state["exclude_tags"] or "[]")
         match_all = bool(state["match_all"])
@@ -1510,6 +1623,7 @@ def build_frame_state() -> dict:
                 single = image_dict(db, row)
 
     return {
+        "frame_id": state["id"],
         "mode": mode,
         "version": state["version"],
         "interval_seconds": state["interval_seconds"],
@@ -1535,8 +1649,8 @@ def build_frame_state() -> dict:
 
 
 @app.get("/api/frame/current")
-def api_frame_current():
-    return build_frame_state()
+def api_frame_current(frame_id: str = FRAME_ID):
+    return build_frame_state(frame_id)
 
 
 @app.get("/api/frame/wait")
@@ -1548,6 +1662,7 @@ def api_frame_wait(
     blur_background: bool | None = None,
     restart_id: int | None = None,
     timeout: int = 15,
+    frame_id: str = FRAME_ID,
 ):
     """Long poll: return as soon as the frame state changes.
 
@@ -1555,6 +1670,9 @@ def api_frame_wait(
     last_seen_at periodically. On timeout it responds with 204 so the client
     simply reconnects.
     """
+    frame_id = normalize_frame_id(frame_id)
+    with db_conn() as db:
+        ensure_frame(db, frame_id)
     timeout = max(1, min(30, timeout))
     deadline = time.monotonic() + timeout
     last_ping = 0.0
@@ -1565,7 +1683,7 @@ def api_frame_wait(
             state = db.execute(
                 "SELECT version, update_id, update_status, show_clock, "
                 "blur_background, restart_id FROM frame_state WHERE id = ?",
-                (FRAME_ID,),
+                (frame_id,),
             ).fetchone()
             current_status = (
                 (state["update_status"] or "pending")
@@ -1587,11 +1705,11 @@ def api_frame_wait(
             if not changed and now_mono - last_ping >= 5:
                 db.execute(
                     "UPDATE frame_state SET last_seen_at = ? WHERE id = ?",
-                    (now(), FRAME_ID),
+                    (now(), frame_id),
                 )
                 last_ping = now_mono
         if changed:
-            return build_frame_state()
+            return build_frame_state(frame_id)
         if now_mono >= deadline:
             break
         time.sleep(0.5)
@@ -1603,14 +1721,12 @@ class ShownRequest(BaseModel):
 
 
 @app.get("/api/frame/status")
-def api_frame_status():
+def api_frame_status(frame_id: str = FRAME_ID):
     """Lightweight state for the web UI to show what the frame reported."""
     with db_conn() as db:
-        state = db.execute(
-            "SELECT * FROM frame_state WHERE id = ?",
-            (FRAME_ID,),
-        ).fetchone()
+        state = ensure_frame(db, frame_id)
     return {
+        "frame_id": state["id"],
         "mode": state["mode"],
         "version": state["version"],
         "current_image_id": state["current_image_id"],
@@ -1632,15 +1748,16 @@ def api_frame_status():
 
 
 @app.post("/api/frame/restart")
-def api_frame_restart():
-    """Ask the frame app to restart itself on its next poll."""
+def api_frame_restart(frame_id: str = FRAME_ID):
+    """Ask the selected frame to restart itself on its next poll."""
     with db_conn() as db:
+        state = ensure_frame(db, frame_id)
         db.execute(
             "UPDATE frame_state SET restart_id = restart_id + 1 WHERE id = ?",
-            (FRAME_ID,),
+            (state["id"],),
         )
         state = db.execute(
-            "SELECT restart_id FROM frame_state WHERE id = ?", (FRAME_ID,)
+            "SELECT restart_id FROM frame_state WHERE id = ?", (state["id"],)
         ).fetchone()
     return {"ok": True, "restart_id": state["restart_id"]}
 
@@ -1649,38 +1766,41 @@ def api_frame_restart():
 def api_frame_heartbeat(
     version_code: int | None = None,
     version_name: str | None = None,
+    frame_id: str = FRAME_ID,
 ):
     """Mark the frame as alive; called on every poll."""
     with db_conn() as db:
+        state = ensure_frame(db, frame_id)
         if version_code is not None:
             db.execute(
                 "UPDATE frame_state SET last_seen_at = ?, frame_version_code = ?, "
                 "frame_version_name = ?, frame_version_at = ? WHERE id = ?",
-                (now(), version_code, version_name, now(), FRAME_ID),
+                (now(), version_code, version_name, now(), state["id"]),
             )
         else:
             db.execute(
                 "UPDATE frame_state SET last_seen_at = ? WHERE id = ?",
-                (now(), FRAME_ID),
+                (now(), state["id"]),
             )
     return {"ok": True}
 
 
 @app.post("/api/frame/shown")
-def api_frame_shown(req: ShownRequest):
+def api_frame_shown(req: ShownRequest, frame_id: str = FRAME_ID):
     """Record which image the frame is actually displaying.
 
     This deliberately does not bump the frame version: reporting must not make
     the frame reload its slideshow.
     """
     with db_conn() as db:
+        state = ensure_frame(db, frame_id)
         row = db.execute("SELECT id FROM images WHERE id = ?", (req.image_id,)).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="Image not found")
         db.execute(
             "UPDATE frame_state SET shown_image_id = ?, shown_at = ?, "
             "last_seen_at = ? WHERE id = ?",
-            (req.image_id, now(), now(), FRAME_ID),
+            (req.image_id, now(), now(), state["id"]),
         )
     return {"ok": True}
 

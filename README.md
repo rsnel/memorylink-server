@@ -1,8 +1,14 @@
 # MemoryLink server
 
-FastAPI service + single-page web UI. Data lives in `server/data/` by default
-(uploaded images, thumbnails, scaled copies and a SQLite database); set
-`MEMORYLINK_DATA_DIR` to use another location.
+FastAPI service + single-page web UI for one or more frames. Data lives in
+`server/data/` by default (uploaded images, thumbnails, scaled copies and a
+SQLite database); set `MEMORYLINK_DATA_DIR` to use another location.
+
+Each frame generates a random UUID on first launch and sends it as `frame_id`
+on every frame-specific request. The web UI's frame picker shows a friendly
+name when one has been set, otherwise the first eight characters of the UUID.
+The first real frame adopts the legacy `default` row so an existing
+single-frame installation keeps its settings.
 
 ## Run
 
@@ -17,9 +23,11 @@ Apache TLS reverse proxy, see [`deploy/README.md`](deploy/README.md).
 
 ## Web UI
 
-The page has three parts: a header with the slideshow controls and the tag
-filter, the photo gallery, and a **Settings** panel for everything that is set
-once and left alone.
+The page has three parts: a header with the frame picker, the slideshow
+controls and the tag filter; the shared photo gallery; and a **Settings** panel
+for everything that is set once and left alone. The gallery, tags and order are
+shared by all frames; the slideshow, filter, display state, restart command and
+update status are per frame.
 
 **Photos**
 
@@ -38,7 +46,7 @@ once and left alone.
   - **Delete** — deletes all selected photos.
 - **Tags on one photo** — `+ tag` on a card adds tags, `×` removes one. Tag
   names are normalised to lowercase.
-- **Show on frame** — pins that photo on the frame immediately.
+- **Show on frame** — pins that photo on the selected frame immediately.
 - **Order** — drag photos in the gallery to set the slideshow order. New uploads
   are appended at the end. With a tag filter active, dragging only rearranges the
   visible photos and leaves the hidden ones in place.
@@ -50,8 +58,12 @@ once and left alone.
   several tags included, choose whether a photo needs all of them or any of
   them. Hiding always wins.
 - **Start slideshow** — sends the filter, the interval and *Random order* to
-  the frame. The text next to the button tells what the frame is playing, and
-  turns yellow when the page shows something else than the frame was told.
+  the selected frame. The text next to the button tells what the frame is
+  playing, and turns yellow when the page shows something else than the frame
+  was told.
+- **Frame picker** — choose which frame the controls apply to. **Save name**
+  stores a friendly name for it; an unnamed frame is shown by the first eight
+  characters of its UUID.
 
 **Settings**
 
@@ -63,12 +75,13 @@ once and left alone.
   upload date (`2026`, `2026-11`, `2026-11-13`).
 - **Tags** — rename a tag everywhere (renaming onto an existing tag merges the
   two) or remove it from all photos. A running slideshow filter follows along.
-- **Frame software** — push a signed APK to the frame, or store a GitHub token,
-  download the latest release APK artifact and then push that downloaded build
-  separately.
-  The panel shows pending/installing/installed/failed status and offers
-  **Cancel update** while the install can still be withdrawn. **Restart frame**
-  asks the frame app to restart itself (settings and image cache are preserved).
+- **Frame software** — push a signed APK to all known frames, or store a
+  GitHub token, download the latest release APK artifact and then push that
+  downloaded build separately. Updates are global to the frame fleet; each
+  frame reports its own pending/installing/installed/failed status. **Cancel
+  update** withdraws the update for every frame that has it. **Restart frame**
+  asks the selected frame app to restart itself (settings and image cache are
+  preserved).
 - **Nearby Bluetooth devices** — BLE devices reported by the frame; each has an
   owner/comment field. The frame scans for 10 seconds every 2 minutes while it
   is running.
@@ -82,6 +95,8 @@ and combined again like any other.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/api/health` | liveness check |
+| GET | `/api/frames` | list frames (`id`, friendly `name`, `short_id`, `display_name`, `online`) |
+| PUT | `/api/frames/{frame_id}` | `{name}` → set or clear a frame's friendly name |
 | POST | `/api/server/restart` | re-exec the running uvicorn process |
 | GET | `/api/images` | list images in gallery order (each carries its `tags`) |
 | POST | `/api/images` | upload (multipart, field `files`, multiple allowed; optional field `tags`, comma separated). New images also get the configured upload tags |
@@ -98,22 +113,22 @@ and combined again like any other.
 | POST | `/api/bluetooth` | `{devices: [{address, name, rssi}]}` → upsert devices seen by the frame |
 | GET | `/api/bluetooth` | list known Bluetooth devices and comments |
 | PUT | `/api/bluetooth/{address}/comment` | `{comment}` → set owner/comment for a device |
-| GET | `/api/update` | metadata/status of the APK currently queued for the frame |
-| POST | `/api/update` | upload an APK (multipart, field `apk`) and queue it |
-| POST | `/api/update/cancel` | withdraw the queued APK so the frame won't install it |
+| GET | `/api/update` | metadata/status of the APK currently queued for the selected frame |
+| POST | `/api/update` | upload an APK (multipart, field `apk`) and queue it for all frames |
+| POST | `/api/update/cancel` | withdraw the queued APK for all frames |
 | GET | `/api/github/status` | token/repo status and the currently downloaded build |
 | POST | `/api/github/token` | `{token}` → store (mode 600) or clear with an empty token |
 | POST | `/api/github/download` | download the latest release APK artifact into staging (does not queue it) |
 | POST | `/api/github/push` | queue the staged download as the frame update |
-| POST | `/api/frame/update-result` | `{update_id, status, message}` → record installing/installed/failed |
+| POST | `/api/frame/update-result` | `{update_id, status, message}` → record installing/installed/failed for a frame |
 | GET | `/update.apk` | download the queued APK |
 | GET | `/images/{filename}` | full image; scaled down to at most 1080×1920 and cached in `data/scaled/` |
 | GET | `/thumbs/{filename}` | thumbnail |
-| POST | `/api/images/{id}/display` | pin an image on the frame |
+| POST | `/api/images/{id}/display` | pin an image on the selected frame |
 | POST | `/api/frame/slideshow` | `{interval_seconds, tags, exclude_tags, match_all, random}` → filtered slideshow |
-| GET | `/api/frame/current` | what the frame should show now (`images`, `filter`, `random`, `transitions`, `blur_background`, `shown_image_id`, `online`, `version_info`) |
+| GET | `/api/frame/current` | what the selected frame should show now (`frame_id`, `images`, `filter`, `random`, `transitions`, `blur_background`, `shown_image_id`, `online`, `version_info`) |
 | GET | `/api/frame/wait` | long poll; returns the new state when the frame version, update, clock, or blur setting changes (204 on timeout) |
-| GET | `/api/frame/status` | `{mode, version, current_image_id, interval_seconds, filter, random, shown_image_id, shown_at, last_seen_at, online, update, version_info}` |
+| GET | `/api/frame/status` | `{frame_id, mode, version, current_image_id, interval_seconds, filter, random, shown_image_id, shown_at, last_seen_at, online, update, version_info}` |
 | PUT | `/api/frame/transitions` | `{transitions: []}` → choose allowed effects (`[]` = all) |
 | PUT | `/api/frame/clock` | `{show_clock: bool}` → show/hide the time overlay |
 | PUT | `/api/frame/blur` | `{blur_background: bool}` → fill letterboxing with a blurred copy |
@@ -123,24 +138,31 @@ and combined again like any other.
 | POST | `/api/edit/combine` | `{image_ids: []}` → 1080×1920 stack |
 | POST | `/api/edit/fit` | `{image_id}` → 1080×1920 cover-crop |
 
+Frame-specific endpoints accept `?frame_id=<uuid>`; omitting it addresses the
+legacy `default` frame. The Android app generates the UUID once and keeps it
+across updates; the configuration screen shows the full id. Shared library
+changes (upload/delete/tags/order) bump every frame's version, while
+display/slideshow/restart/update-status changes are scoped to one frame.
+
 The tag filter lives entirely on the server, so `GET /api/frame/current` already
-returns the filtered image list that the frame cycles through. The list is
-ordered by the gallery order; the frame displays it in that order unless the
-slideshow was started with `random: true`, in which case it picks each next
+returns the filtered image list that the selected frame cycles through. The
+list is ordered by the gallery order; the frame displays it in that order unless
+the slideshow was started with `random: true`, in which case it picks each next
 image at random (never the one already on screen). The frame reports what it
 actually shows via `POST /api/frame/shown`, which the web UI shows as a green
-“On frame” badge. The app also keeps downloaded images in its local cache
-directory, so a restart does not re-download the library.
+“On frame” badge for the selected frame. The app also keeps downloaded images
+in its local cache directory, so a restart does not re-download the library.
 
 `GET /api/frame/current` also includes an `update` object after an APK has been
-pushed. The frame only installs it if it is signed by the same key as the
-installed app; Android shows an install confirmation on the device. Installing
+pushed. A pushed update is queued for every known frame and the APK file is
+shared; each frame only installs it if it is signed by the same key as the
+installed app. Android shows an install confirmation on the device. Installing
 from the app requires **Install unknown apps** to be enabled once (on Android 7
-and older: **Settings → Security → Unknown sources**). The frame
-reports `installing`, `installed` or `failed` back to the server, and the web UI
-refreshes that status every few seconds. Once the installer dialog is open,
-canceling has to be done on the frame; **Cancel update** prevents the frame from
-starting or continuing a queued install.
+and older: **Settings → Security → Unknown sources**). Each frame reports
+`installing`, `installed` or `failed` back to the server, and the web UI
+refreshes the selected frame's status every few seconds. Once the installer
+dialog is open, canceling has to be done on the frame; **Cancel update**
+prevents every frame from starting or continuing the queued install.
 
 The frame calls `POST /api/frame/heartbeat` on every poll and keeps a
 `GET /api/frame/wait` long poll open. Commands from the web UI (show an image,

@@ -317,6 +317,14 @@
   <div id="recommendations" class="notice" hidden></div>
 
   <div class="row">
+    <span class="row-label">Frame</span>
+    <select id="frameSelect" title="Frame to control"></select>
+    <input id="frameName" type="text" maxlength="80" placeholder="Friendly name" autocomplete="off">
+    <button id="saveFrameNameBtn" class="small" type="button">Save name</button>
+    <span id="frameIdHint" class="hint"></span>
+  </div>
+
+  <div class="row">
     <span class="row-label">Slideshow</span>
     <button id="slideshowBtn" class="primary" type="button">▶ Start slideshow</button>
     <label class="check muted">every <input id="interval" type="number" min="5" max="3600" value="30"> s</label>
@@ -467,6 +475,15 @@ const TRANSITIONS = [
 ];
 
 let images = [];
+let frames = [];
+const readStoredFrame = () => {
+  try { return localStorage.getItem("memorylink.frame"); } catch (e) { return null; }
+};
+const storeFrame = (id) => {
+  try { localStorage.setItem("memorylink.frame", id); } catch (e) { /* private mode */ }
+};
+let currentFrameId = readStoredFrame();
+let framesInitialized = false;
 const selected = new Set();   // ids of the selected photos
 let lastClickedId = null;     // anchor for Shift-click range selection
 
@@ -513,6 +530,9 @@ const sendJson = (path, method, body) => api(path, {
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify(body),
 });
+
+const withFrame = (path) => path + (path.includes("?") ? "&" : "?") +
+  "frame_id=" + encodeURIComponent(currentFrameId || "default");
 
 function toast(msg, kind = "") {
   const el = $("#toast");
@@ -727,6 +747,80 @@ async function bulkTags(add, remove) {
   }
 }
 
+// --------------------------------------------------------- frame picker
+
+async function loadFrames() {
+  try {
+    const data = await api("/api/frames");
+    frames = data.frames || [];
+    if (!frames.length) {
+      currentFrameId = null;
+      $("#frameSelect").innerHTML = '<option value="">No frames yet</option>';
+      $("#frameIdHint").textContent = "";
+      return;
+    }
+    let changed = false;
+    if (!currentFrameId || !frames.some((f) => f.id === currentFrameId)) {
+      currentFrameId = frames[0].id;
+      changed = true;
+    }
+    storeFrame(currentFrameId);
+    const select = $("#frameSelect");
+    select.innerHTML = frames.map((f) => {
+      const label = (f.display_name || f.short_id || f.id) + (f.online ? "" : " (offline)");
+      return '<option value="' + escapeHtml(f.id) + '">' + escapeHtml(label) + "</option>";
+    }).join("");
+    select.value = currentFrameId;
+    const selectedFrame = frames.find((f) => f.id === currentFrameId);
+    if (selectedFrame && document.activeElement !== $("#frameName")) {
+      $("#frameName").value = selectedFrame.name || "";
+    }
+    if (selectedFrame) {
+      $("#frameIdHint").textContent = "id: " +
+        (selectedFrame.short_id || selectedFrame.id);
+      $("#frameIdHint").title = selectedFrame.id;
+    }
+    if (changed && framesInitialized) await loadFrameState();
+    framesInitialized = true;
+  } catch (e) {
+    // The status poll will retry.
+  }
+}
+
+async function switchFrame(id) {
+  if (!id || id === currentFrameId) return;
+  currentFrameId = id;
+  storeFrame(id);
+  frame = null;
+  stateVersion = null;
+  shownId = null;
+  frameOnline = false;
+  updateFrameStatus();
+  const selectedFrame = frames.find((f) => f.id === id);
+  if (selectedFrame) {
+    $("#frameName").value = selectedFrame.name || "";
+    $("#frameIdHint").textContent = "id: " +
+      (selectedFrame.short_id || selectedFrame.id);
+    $("#frameIdHint").title = selectedFrame.id;
+  }
+  await loadFrameState();
+}
+
+async function saveFrameName() {
+  if (!currentFrameId) return;
+  try {
+    await sendJson(
+      "/api/frames/" + encodeURIComponent(currentFrameId),
+      "PUT",
+      { name: $("#frameName").value },
+    );
+    toast("Frame name saved", "ok");
+    await loadFrames();
+  } catch (e) {
+    toast("Could not save the frame name: " + e.message, "error");
+  }
+}
+
 // --------------------------------------------------------- frame state
 
 function updateFrameStatus() {
@@ -781,7 +875,7 @@ function applyFrameInfo(data) {
 
 async function loadFrameState() {
   try {
-    const data = await api("/api/frame/current");
+    const data = await api(withFrame("/api/frame/current"));
     applyFrameInfo(data);
     stateVersion = data.version;
     $("#interval").value = frame.interval_seconds;
@@ -805,7 +899,7 @@ const busyEditing = () => draggedCard || document.querySelector(".tag-input");
 
 async function refreshStatus() {
   let data;
-  try { data = await api("/api/frame/status"); } catch (e) { return; }
+  try { data = await api(withFrame("/api/frame/status")); } catch (e) { return; }
   applyFrameInfo(data);
   const next = data.shown_image_id ?? null;
   const nextOnline = !!data.online;
@@ -857,7 +951,7 @@ async function loadImages(quiet) {
 
 /** Remember the version our own change produced, so it is not seen as foreign. */
 async function syncVersion() {
-  try { stateVersion = (await api("/api/frame/status")).version; } catch (e) { /* next poll */ }
+  try { stateVersion = (await api(withFrame("/api/frame/status"))).version; } catch (e) { /* next poll */ }
 }
 
 // ------------------------------------------------------------ settings
@@ -872,7 +966,7 @@ async function saveTransitions() {
   const list = [...document.querySelectorAll("input[data-transition]:checked")]
     .map((el) => el.dataset.transition);
   try {
-    const data = await sendJson("/api/frame/transitions", "PUT", { transitions: list });
+    const data = await sendJson(withFrame("/api/frame/transitions"), "PUT", { transitions: list });
     toast(data.transitions.length ? "Transitions saved" : "All transitions enabled", "ok");
   } catch (e) {
     toast("Could not save transitions: " + e.message, "error");
@@ -1112,7 +1206,7 @@ window.addEventListener("drop", (e) => {
 
 $("#slideshowBtn").addEventListener("click", async () => {
   try {
-    const data = await sendJson("/api/frame/slideshow", "POST", {
+    const data = await sendJson(withFrame("/api/frame/slideshow"), "POST", {
       interval_seconds: parseInt($("#interval").value, 10) || 30,
       tags: [...includeTags],
       exclude_tags: [...excludeTags],
@@ -1136,6 +1230,12 @@ $("#slideshowBtn").addEventListener("click", async () => {
 
 $("#interval").addEventListener("input", renderSlideshowNote);
 $("#randomOrder").addEventListener("change", renderSlideshowNote);
+
+$("#frameSelect").addEventListener("change", (e) => switchFrame(e.target.value));
+$("#saveFrameNameBtn").addEventListener("click", saveFrameName);
+$("#frameName").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") saveFrameName();
+});
 
 $("#tagChips").addEventListener("click", (e) => {
   const chip = e.target.closest(".chip");
@@ -1291,7 +1391,7 @@ $("#gallery").addEventListener("click", async (e) => {
   if (!btn) return;
   try {
     if (btn.dataset.act === "display") {
-      await api("/api/images/" + id + "/display", { method: "POST" });
+      await api(withFrame("/api/images/" + id + "/display"), { method: "POST" });
       if (frame) { frame.mode = "single"; frame.current_image_id = id; }
       await syncVersion();
       renderSlideshowNote();
@@ -1405,9 +1505,9 @@ async function saveToggle(input, path, key, onText, offText) {
   }
 }
 $("#showClock").addEventListener("change", (e) =>
-  saveToggle(e.target, "/api/frame/clock", "show_clock", "Clock shown", "Clock hidden"));
+  saveToggle(e.target, withFrame("/api/frame/clock"), "show_clock", "Clock shown", "Clock hidden"));
 $("#blurBackground").addEventListener("change", (e) =>
-  saveToggle(e.target, "/api/frame/blur", "blur_background",
+  saveToggle(e.target, withFrame("/api/frame/blur"), "blur_background",
     "Blurred background enabled", "Blurred background disabled"));
 
 $("#transitionPanel").addEventListener("change", () => {
@@ -1458,9 +1558,9 @@ $("#apkInput").addEventListener("change", async (e) => {
   fd.append("apk", file);
   toast("Uploading update…", "busy");
   try {
-    const data = await api("/api/update", { method: "POST", body: fd });
+    const data = await api(withFrame("/api/update"), { method: "POST", body: fd });
     renderUpdateInfo(data.update);
-    toast("Update pushed — approve the install on the frame", "ok");
+    toast("Update queued for all frames — approve the install on each", "ok");
   } catch (err) {
     toast("Update push failed: " + err.message, "error");
   }
@@ -1470,9 +1570,9 @@ $("#apkInput").addEventListener("change", async (e) => {
 $("#cancelUpdateBtn").addEventListener("click", async () => {
   if (!confirm("Cancel the pending update?")) return;
   try {
-    const data = await api("/api/update/cancel", { method: "POST" });
+    const data = await api(withFrame("/api/update/cancel"), { method: "POST" });
     renderUpdateInfo(data.update);
-    toast("Update canceled", "ok");
+    toast("Update canceled for all frames", "ok");
   } catch (err) {
     toast("Cancel failed: " + err.message, "error");
   }
@@ -1523,11 +1623,11 @@ $("#downloadGithubBtn").addEventListener("click", async () => {
 $("#pushDownloadedBtn").addEventListener("click", async () => {
   if (!confirm("Push the downloaded build to the frame?")) return;
   try {
-    const data = await api("/api/github/push", { method: "POST" });
+    const data = await api(withFrame("/api/github/push"), { method: "POST" });
     renderUpdateInfo(data.update);
     setGithubDownloaded(null);
     const name = data.update && data.update.name ? data.update.name : "update";
-    toast("Queued " + name + " — the frame will install it", "ok");
+    toast("Queued " + name + " for all frames", "ok");
   } catch (e) {
     toast("Could not push the downloaded build: " + e.message, "error");
   }
@@ -1538,7 +1638,7 @@ $("#restartServerBtn").addEventListener("click", restartServer);
 $("#restartFrameBtn").addEventListener("click", async () => {
   if (!confirm("Restart the frame app now?")) return;
   try {
-    await api("/api/frame/restart", { method: "POST" });
+    await api(withFrame("/api/frame/restart"), { method: "POST" });
     toast(frameOnline ? "Frame restart requested" : "Frame is offline; restart queued", "ok");
   } catch (e) {
     toast("Could not restart the frame: " + e.message, "error");
@@ -1560,9 +1660,11 @@ $("#btRefreshBtn").addEventListener("click", loadBluetooth);
 
 (async () => {
   renderTransitionPanel(new Set());
+  await loadFrames();
   await loadImages();
   await loadFrameState();
   setInterval(refreshStatus, 5000);
+  setInterval(loadFrames, 15000);
 })();
 </script>
 </body>
