@@ -69,7 +69,7 @@ MAX_TAG_LENGTH = 40
 
 # Bump this together with the VERSION file when the server code changes. If the
 # file is newer than this constant, the running process is out of date.
-SERVER_VERSION = 14
+SERVER_VERSION = 15
 VERSION_PATH = BASE_DIR / "VERSION"
 
 # Must match the Transition enum names in the Android app.
@@ -1712,6 +1712,8 @@ def api_frame_wait(
                 "blur_background, restart_id FROM frame_state WHERE id = ?",
                 (frame_id,),
             ).fetchone()
+            if state is None:
+                state = ensure_frame(db, frame_id)
             current_status = (
                 (state["update_status"] or "pending")
                 if (state["update_id"] or 0)
