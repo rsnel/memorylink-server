@@ -11,62 +11,106 @@
     --bg: #0f1115;
     --panel: #1a1d24;
     --panel2: #232732;
+    --line: #343947;
     --text: #e7e9ee;
     --muted: #9aa1ad;
     --accent: #4f8cff;
     --danger: #e05252;
     --ok: #3ecf8e;
+    --warn: #f2d18b;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body {
     margin: 0;
     background: var(--bg);
     color: var(--text);
     font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   }
-  .sticky-wrap { position: sticky; top: 0; z-index: 10; }
+
+  /* ---- controls ---- */
+  button, .btn {
+    background: var(--panel2);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 7px 14px;
+    font: inherit;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  button:hover, .btn:hover { border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; border-color: var(--line); }
+  button.primary, .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover, .btn.primary:hover { filter: brightness(1.1); }
+  button.danger { color: var(--danger); }
+  button.danger:hover { border-color: var(--danger); }
+  button.small { padding: 4px 10px; font-size: 12px; }
+  button.link {
+    background: none; border: none; padding: 0;
+    color: var(--accent); font-size: inherit;
+  }
+  button.link:hover { text-decoration: underline; }
+  input[type=text], input[type=number], input[type=password], select {
+    background: var(--panel2);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 6px 8px;
+    font: inherit;
+  }
+  input:focus-visible, select:focus-visible, button:focus-visible, .btn:focus-within {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  label.check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+  .muted { color: var(--muted); }
+  .hint { color: var(--muted); font-size: 12px; }
+
+  /* ---- header ---- */
   header {
+    position: sticky; top: 0; z-index: 10;
     background: var(--panel);
     border-bottom: 1px solid #000;
-    padding: 12px 20px;
+    padding: 10px 20px;
     display: flex;
     flex-direction: column;
     gap: 10px;
   }
-  .top { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+  .spacer { flex: 1 1 auto; }
   header h1 { font-size: 18px; margin: 0; font-weight: 600; }
-  .frame-status { font-size: 13px; color: var(--muted); }
-  .frame-status.online { color: var(--ok); }
-  .frame-status.offline { color: var(--danger); }
-  .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  button, .upload-btn {
-    background: var(--panel2);
-    color: var(--text);
-    border: 1px solid #343947;
-    border-radius: 8px;
-    padding: 8px 14px;
-    font: inherit;
-    cursor: pointer;
+  .pill {
+    font-size: 12px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    border: 1px solid currentColor;
   }
-  button:hover, .upload-btn:hover { border-color: var(--accent); }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  button.danger { color: var(--danger); }
-  button.danger:hover { border-color: var(--danger); }
-  .controls label { color: var(--muted); display: flex; align-items: center; gap: 6px; }
-  .controls .info { color: var(--muted); font-size: 12px; }
-  .controls input[type=number] {
-    width: 64px;
-    background: var(--panel2);
-    color: var(--text);
-    border: 1px solid #343947;
-    border-radius: 6px;
-    padding: 6px 8px;
+  .pill.online { color: var(--ok); }
+  .pill.offline { color: var(--danger); }
+  .row-label {
+    color: var(--muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    width: 74px;
+    flex: none;
   }
-  .status { font-size: 13px; color: var(--muted); min-height: 18px; }
-  .status.error { color: var(--danger); }
-  .status.ok { color: var(--ok); }
+  #interval { width: 64px; }
+  #slideshowNote { font-size: 13px; color: var(--muted); }
+  #slideshowNote.dirty { color: var(--warn); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    border-radius: 999px;
+    padding: 3px 12px;
+    font-size: 13px;
+  }
+  .chip .n { color: var(--muted); font-size: 11px; margin-left: 4px; }
+  .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .chip.exclude { background: var(--danger); border-color: var(--danger); color: #fff; text-decoration: line-through; }
+  .chip.on .n, .chip.exclude .n { color: inherit; opacity: .8; }
 
-  .recommendations {
+  .notice {
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -74,153 +118,21 @@
     border: 1px solid #9a6b1f;
     border-radius: 8px;
     background: #2a2110;
-    color: #f2d18b;
+    color: var(--warn);
     font-size: 13px;
   }
-  .recommendations[hidden] { display: none; }
-  .recommendations button {
-    align-self: flex-start;
-    margin-top: 4px;
-    padding: 5px 12px;
-    font-size: 12px;
-  }
+  .notice button { align-self: flex-start; margin-top: 4px; }
 
-  .transition-panel {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 16px;
-    padding-top: 6px;
-    border-top: 1px solid #343947;
-  }
-  .transition-panel.hidden { display: none; }
-  .transition-panel label {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    color: var(--text);
-    font-size: 13px;
-  }
-  .transition-panel .hint { color: var(--muted); font-size: 12px; margin-left: auto; }
-
-  .bt-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding-top: 6px;
-    border-top: 1px solid #343947;
-  }
-  .bt-panel.hidden { display: none; }
-  .bt-head {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    color: var(--text);
-    font-size: 14px;
-  }
-  .bt-head button { padding: 4px 10px; font-size: 12px; }
-  #btList {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    max-height: 38vh;
-    overflow: auto;
-  }
-  .bt-row {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    padding: 7px 10px;
-    border: 1px solid #343947;
-    border-radius: 8px;
-    background: var(--panel2);
-    font-size: 12px;
-  }
-  .bt-row .bt-name { color: var(--text); font-weight: 500; }
-  .bt-row .bt-meta {
-    color: var(--muted);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  }
-  .bt-row input {
-    background: var(--panel);
-    color: var(--text);
-    border: 1px solid #343947;
-    border-radius: 6px;
-    padding: 4px 8px;
-    font: inherit;
-  }
-  .bt-empty { color: var(--muted); font-size: 13px; }
-
-  .github-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 7px;
-    padding-top: 6px;
-    border-top: 1px solid #343947;
-  }
-  .github-panel.hidden { display: none; }
-  .gh-line {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-    color: var(--text);
-    font-size: 13px;
-  }
-  .gh-line input {
-    flex: 1 1 240px;
-    background: var(--panel2);
-    color: var(--text);
-    border: 1px solid #343947;
-    border-radius: 6px;
-    padding: 6px 8px;
-    font: inherit;
-  }
-  .github-panel .hint { color: var(--muted); font-size: 12px; }
-
-  .tag-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-  .tag-bar .label { color: var(--muted); font-size: 13px; }
-  .tag-bar .hint { color: var(--muted); font-size: 12px; margin-left: auto; }
-  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-  .chip {
-    background: var(--panel2);
-    border: 1px solid #343947;
-    border-radius: 999px;
-    padding: 4px 12px;
-    font-size: 13px;
-    cursor: pointer;
-    user-select: none;
-  }
-  .chip:hover { border-color: var(--accent); }
-  .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .chip.exclude { background: var(--danger); border-color: var(--danger); color: #fff; }
-  select {
-    background: var(--panel2);
-    color: var(--text);
-    border: 1px solid #343947;
-    border-radius: 6px;
-    padding: 5px 8px;
-    font: inherit;
-  }
-
-  .combine-bar {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 20px;
-    background: #172033;
-    border-bottom: 1px solid #2a3a55;
-    color: var(--muted);
-  }
-  .combine-bar.hidden { display: none; }
-  .combine-bar b { color: var(--text); }
-
+  /* ---- gallery ---- */
+  .gallery-head { padding: 16px 20px 0; }
+  .gallery-head h2 { font-size: 15px; margin: 0; font-weight: 600; }
   main {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
     gap: 16px;
-    padding: 20px;
+    padding: 14px 20px 20px;
   }
+  body.has-selection main { padding-bottom: 150px; }
   .card {
     background: var(--panel);
     border: 1px solid #2a2e3a;
@@ -229,8 +141,8 @@
     display: flex;
     flex-direction: column;
   }
-  .card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(79,140,255,.35); }
   .card.onframe { border-color: var(--ok); box-shadow: 0 0 0 2px rgba(62,207,142,.3); }
+  .card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(79,140,255,.45); }
   .card[draggable=true] { cursor: grab; }
   .card.dragging { opacity: .45; }
   .imgwrap {
@@ -240,35 +152,45 @@
     display: grid;
     place-items: center;
     overflow: hidden;
+    cursor: pointer;
   }
-  .imgwrap img { width: 100%; height: 100%; object-fit: contain; }
+  .imgwrap img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+  .mark {
+    position: absolute; top: 8px; right: 8px; z-index: 1;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    background: rgba(0,0,0,.35);
+    display: grid; place-items: center;
+    color: transparent;
+    font-size: 13px; font-weight: 700; line-height: 1;
+    opacity: .55;
+  }
+  .imgwrap:hover .mark { opacity: 1; }
+  .card.selected .mark { background: var(--accent); border-color: var(--accent); color: #fff; opacity: 1; }
   .onframe-badge {
     position: absolute; top: 8px; left: 8px; z-index: 1;
     background: var(--ok); color: #06281a;
     font-size: 11px; font-weight: 600;
     padding: 2px 8px; border-radius: 999px;
   }
-  .meta { padding: 10px 12px 4px; }
-  .meta .name {
-    font-size: 13px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .meta .dims { font-size: 12px; color: var(--muted); margin-top: 2px; }
-  .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; align-items: center; }
+  .meta { padding: 9px 12px 4px; }
+  .meta .name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .meta .dims { font-size: 12px; color: var(--muted); margin-top: 1px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; align-items: center; }
   .tag {
     background: #2c3240;
     border: 1px solid #3a4151;
     border-radius: 999px;
     padding: 1px 8px;
     font-size: 11px;
-    color: var(--text);
     display: inline-flex;
     align-items: center;
     gap: 4px;
   }
   .tag .tag-x {
     background: none; border: none; color: var(--muted);
-    cursor: pointer; padding: 0; font-size: 13px; line-height: 1;
+    padding: 0; font-size: 13px; line-height: 1;
   }
   .tag .tag-x:hover { color: var(--danger); }
   .tag-add {
@@ -278,122 +200,256 @@
     padding: 1px 8px;
     font-size: 11px;
     color: var(--muted);
-    cursor: pointer;
   }
-  .tag-add:hover { border-color: var(--accent); color: var(--accent); }
-  .tag-input {
-    width: 90px;
-    background: var(--panel2);
-    color: var(--text);
-    border: 1px solid var(--accent);
+  .tag-add:hover { color: var(--accent); }
+  input.tag-input {
+    width: 96px;
+    border-color: var(--accent);
     border-radius: 999px;
     padding: 2px 8px;
     font-size: 11px;
   }
-  .actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px 12px; }
-  .actions button { flex: 1 1 auto; padding: 6px 8px; font-size: 12px; }
+  .actions { display: flex; gap: 6px; padding: 8px 12px 12px; margin-top: auto; }
+  .actions button { padding: 5px 8px; font-size: 12px; }
+  .actions button[data-act=display] { flex: 1 1 auto; }
   .empty { grid-column: 1 / -1; text-align: center; color: var(--muted); padding: 60px 0; }
+
+  /* ---- selection bar ---- */
+  #selectionBar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+    background: #172033;
+    border-top: 1px solid #2a3a55;
+    padding: 10px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    box-shadow: 0 -6px 24px rgba(0,0,0,.45);
+  }
+  #selectionBar b { font-weight: 600; }
+  #bulkTagInput { width: 190px; }
+  .sep { width: 1px; align-self: stretch; background: #2a3a55; }
+
+  /* ---- toast ---- */
+  #toast {
+    position: fixed; left: 50%; bottom: 20px; z-index: 40;
+    transform: translateX(-50%);
+    max-width: min(90vw, 640px);
+    background: #2b303c;
+    border: 1px solid var(--line);
+    border-left: 4px solid var(--muted);
+    border-radius: 8px;
+    padding: 9px 14px;
+    font-size: 13px;
+    box-shadow: 0 8px 28px rgba(0,0,0,.5);
+  }
+  body.has-selection #toast { bottom: 120px; }
+  #toast.ok { border-left-color: var(--ok); }
+  #toast.error { border-left-color: var(--danger); }
+
+  /* ---- settings drawer ---- */
+  #scrim { position: fixed; inset: 0; z-index: 29; background: rgba(0,0,0,.5); }
+  #drawer {
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 30;
+    width: min(440px, 100vw);
+    background: var(--panel);
+    border-left: 1px solid #000;
+    overflow-y: auto;
+    padding: 0 18px 24px;
+  }
+  .drawer-head {
+    position: sticky; top: 0; z-index: 1;
+    background: var(--panel);
+    display: flex; align-items: center;
+    padding: 14px 0 10px;
+  }
+  .drawer-head h2 { font-size: 17px; margin: 0; flex: 1; }
+  #drawer details { border-top: 1px solid var(--line); }
+  #drawer summary { cursor: pointer; padding: 12px 0; font-weight: 600; }
+  #drawer .body { display: flex; flex-direction: column; gap: 10px; padding-bottom: 16px; font-size: 14px; }
+  #drawer .body input[type=text], #drawer .body input[type=password] { width: 100%; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+  .tag-row, .bt-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel2);
+  }
+  .tag-row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+  .bt-row { flex-direction: column; align-items: stretch; gap: 3px; font-size: 12px; }
+  .bt-row .bt-name { font-weight: 500; }
+  .bt-row .bt-meta { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .list { display: flex; flex-direction: column; gap: 6px; }
+
+  /* ---- drop target ---- */
+  #dropZone {
+    position: fixed; inset: 0; z-index: 50;
+    background: rgba(15,17,21,.85);
+    border: 3px dashed var(--accent);
+    display: grid; place-items: center;
+    font-size: 22px;
+    pointer-events: none;
+  }
+
+  @media (max-width: 640px) {
+    header { position: static; padding: 10px 12px; }
+    .row-label { width: 100%; }
+    .gallery-head { padding: 12px 12px 0; }
+    main { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; padding: 12px; }
+    #selectionBar { padding: 10px 12px; }
+    #bulkTagInput { flex: 1 1 120px; width: auto; }
+    .sep { display: none; }
+    body.has-selection main { padding-bottom: 230px; }
+    body.has-selection #toast { bottom: 200px; }
+  }
 </style>
 </head>
 <body>
-<div class="sticky-wrap">
-  <header>
-    <div class="top">
-      <h1>MemoryLink Photoframe</h1>
-      <span id="frameStatus" class="frame-status offline">● Frame offline</span>
-      <div class="controls">
-        <button id="slideshowBtn" class="primary">▶ Start slideshow</button>
-        <label>Interval (s) <input id="interval" type="number" min="5" max="3600" value="30"></label>
-        <label><input id="randomOrder" type="checkbox"> Random order</label>
-        <label><input id="showClock" type="checkbox"> Clock</label>
-        <label><input id="blurBackground" type="checkbox"> Blurred background</label>
-        <button id="transitionBtn" type="button">Transitions</button>
-        <button id="bluetoothBtn" type="button">Bluetooth</button>
-        <button id="githubBtn" type="button">GitHub</button>
-        <label class="upload-btn">Upload images<input id="fileInput" type="file" accept="image/*" multiple hidden></label>
-        <label class="upload-btn">Push update APK<input id="apkInput" type="file" accept=".apk,application/vnd.android.package-archive" hidden></label>
-        <button id="cancelUpdateBtn" class="danger" type="button" hidden>Cancel update</button>
-        <span id="updateInfo" class="info"></span>
-      </div>
-    </div>
-    <div id="tagBar" class="tag-bar">
-      <span class="label">Slideshow tags:</span>
-      <div id="tagChips" class="chips"></div>
-      <select id="matchMode">
-        <option value="all" selected>Match all (AND)</option>
-        <option value="any">Match any (OR)</option>
-      </select>
-      <button id="clearFilterBtn">Clear</button>
-      <span class="hint">Drag photos to set the slideshow order</span>
-    </div>
-    <div id="excludeTagBar" class="tag-bar">
-      <span class="label">Exclude tags:</span>
-      <div id="excludeTagChips" class="chips"></div>
-      <button id="clearExcludeBtn">Clear</button>
-      <span class="hint">Photos with any of these tags are hidden</span>
-    </div>
-    <div id="status" class="status"></div>
-    <div id="recommendations" class="recommendations" hidden></div>
-    <div id="transitionPanel" class="transition-panel hidden"></div>
-    <div id="bluetoothPanel" class="bt-panel hidden">
-      <div class="bt-head">
-        <span>Nearby Bluetooth devices</span>
-        <button id="btRefreshBtn" type="button">Refresh</button>
-      </div>
-      <div id="btList"></div>
-    </div>
-    <div id="githubPanel" class="github-panel hidden">
-      <div class="gh-line">
-        <span>GitHub Actions build</span>
-        <span id="githubStatus" class="info">Checking…</span>
-      </div>
-      <div class="gh-line">
-        <input
-          id="githubToken"
-          type="password"
-          autocomplete="off"
-          placeholder="GitHub token with Actions access" />
-        <button id="saveGithubTokenBtn" type="button">Save token</button>
-        <button id="clearGithubTokenBtn" type="button" class="danger">Clear</button>
-      </div>
-      <div class="gh-line">
-        <button id="downloadGithubBtn" class="primary" type="button" disabled>
-          Download latest build
-        </button>
-        <button id="restartFrameBtn" type="button">Restart frame</button>
-        <button id="restartServerBtn" type="button" class="danger" hidden>
-          Restart server
-        </button>
-        <span class="hint">Token is stored on the server with mode 600.</span>
-      </div>
-    </div>
-  </header>
-
-  <div id="combineBar" class="combine-bar hidden">
-    <span>Edit: <b id="selCount">0</b> selected</span>
-    <button id="combineBtn">Combine → portrait 1080×1920</button>
-    <button id="fitBtn">Fit one → portrait</button>
-    <button id="clearSelBtn">Clear</button>
+<header>
+  <div class="row">
+    <h1>MemoryLink</h1>
+    <span id="frameStatus" class="pill offline">Frame offline</span>
+    <span class="spacer"></span>
+    <label class="btn primary">Upload photos<input id="fileInput" type="file" accept="image/*" multiple hidden></label>
+    <button id="settingsBtn" type="button">Settings</button>
   </div>
+
+  <div id="recommendations" class="notice" hidden></div>
+
+  <div class="row">
+    <span class="row-label">Slideshow</span>
+    <button id="slideshowBtn" class="primary" type="button">▶ Start slideshow</button>
+    <label class="check muted">every <input id="interval" type="number" min="5" max="3600" value="30"> s</label>
+    <label class="check"><input id="randomOrder" type="checkbox"> Random order</label>
+    <span id="slideshowNote"></span>
+  </div>
+
+  <div class="row">
+    <span class="row-label">Filter</span>
+    <div id="tagChips" class="chips"></div>
+    <select id="matchMode" title="How several included tags combine" hidden>
+      <option value="all">has all of them</option>
+      <option value="any">has any of them</option>
+    </select>
+    <button id="clearFilterBtn" class="small" type="button" hidden>Clear filter</button>
+    <span id="filterHint" class="hint">Click a tag to show only those photos, click again to hide them.</span>
+  </div>
+</header>
+
+<div class="gallery-head row">
+  <h2 id="galleryCount">Photos</h2>
+  <button id="selectAllBtn" class="link" type="button">Select all</button>
+  <button id="selectUntaggedBtn" class="link" type="button" hidden>Select untagged</button>
+  <span class="spacer"></span>
+  <span class="hint">Click a photo to select it (Shift for a range) · drag to change the order</span>
 </div>
 
 <main id="gallery"></main>
 
+<div id="selectionBar" hidden>
+  <div class="row">
+    <span><b id="selCount">0</b> selected</span>
+    <span class="sep"></span>
+    <input id="bulkTagInput" type="text" list="tagList" placeholder="Tag to add (a, b, …)" autocomplete="off">
+    <button id="bulkAddBtn" class="primary" type="button">Add tag</button>
+    <select id="bulkRemoveSel" title="Remove a tag from the selected photos"></select>
+    <span class="spacer"></span>
+    <button id="clearSelBtn" type="button">Deselect</button>
+  </div>
+  <div class="row">
+    <button id="combineBtn" type="button" title="Stack the selected photos into one 1080×1920 portrait">Combine into portrait</button>
+    <button id="fitBtn" type="button" title="Crop one photo to fill the 1080×1920 frame">Crop to portrait</button>
+    <span class="spacer"></span>
+    <button id="bulkDeleteBtn" class="danger" type="button">Delete</button>
+  </div>
+</div>
+<datalist id="tagList"></datalist>
+
+<div id="scrim" hidden></div>
+<aside id="drawer" hidden aria-label="Settings">
+  <div class="drawer-head">
+    <h2>Settings</h2>
+    <button id="closeDrawerBtn" type="button">Close</button>
+  </div>
+
+  <details open>
+    <summary>Display</summary>
+    <div class="body">
+      <label class="check"><input id="showClock" type="checkbox"> Show clock and date</label>
+      <label class="check"><input id="blurBackground" type="checkbox"> Blurred background around photos that do not fill the screen</label>
+      <div>
+        <div>Transitions</div>
+        <div class="hint">None ticked means all of them are used.</div>
+      </div>
+      <div id="transitionPanel" class="grid2"></div>
+    </div>
+  </details>
+
+  <details open>
+    <summary>New uploads</summary>
+    <div class="body">
+      <label for="uploadTags">Tags added to every uploaded photo</label>
+      <input id="uploadTags" type="text" placeholder="e.g. new, {year}" autocomplete="off">
+      <div class="hint">
+        Separate tags with commas. <code>{year}</code>, <code>{month}</code> and <code>{date}</code>
+        become the upload date. Leave empty to add none.
+      </div>
+      <div id="uploadTagsPreview" class="hint"></div>
+    </div>
+  </details>
+
+  <details id="tagsSection">
+    <summary>Tags</summary>
+    <div class="body">
+      <div class="hint">Renaming a tag to the name of another tag merges the two.</div>
+      <div id="tagManager" class="list"></div>
+    </div>
+  </details>
+
+  <details id="softwareSection">
+    <summary>Frame software</summary>
+    <div class="body">
+      <div id="versionInfo" class="muted"></div>
+      <div id="updateInfo"></div>
+      <div class="row">
+        <label class="btn">Push update APK<input id="apkInput" type="file" accept=".apk,application/vnd.android.package-archive" hidden></label>
+        <button id="cancelUpdateBtn" class="danger" type="button" hidden>Cancel update</button>
+      </div>
+      <div>
+        <div>GitHub Actions build</div>
+        <div id="githubStatus" class="hint">Checking…</div>
+      </div>
+      <input id="githubToken" type="password" autocomplete="off" placeholder="GitHub token with Actions access">
+      <div class="row">
+        <button id="saveGithubTokenBtn" type="button">Save token</button>
+        <button id="clearGithubTokenBtn" type="button" class="danger">Clear token</button>
+        <button id="downloadGithubBtn" class="primary" type="button" disabled>Download latest build</button>
+      </div>
+      <div class="hint">The token is stored on the server with mode 600.</div>
+      <div class="row">
+        <button id="restartFrameBtn" type="button">Restart frame</button>
+        <button id="restartServerBtn" type="button" class="danger" hidden>Restart server</button>
+      </div>
+    </div>
+  </details>
+
+  <details id="bluetoothSection">
+    <summary>Nearby Bluetooth devices</summary>
+    <div class="body">
+      <div class="row">
+        <span class="hint">Seen by the frame; add a note to remember whose it is.</span>
+        <button id="btRefreshBtn" class="small" type="button">Refresh</button>
+      </div>
+      <div id="btList" class="list"></div>
+    </div>
+  </details>
+</aside>
+
+<div id="dropZone" hidden>Drop photos to upload</div>
+<div id="toast" role="status" hidden></div>
+
 <script>
 const $ = (s) => document.querySelector(s);
-let images = [];
-let selectedTags = new Set();
-let excludedTags = new Set();
-let matchAll = true;
-let shownId = null; // image the frame last reported as actually displayed
-let frameOnline = false;
-let draggedCard = null;
-let orderDirty = false;
-let enabledTransitions = new Set();
-let transitionSaveTimer = null;
-let btInterval = null;
-let githubConfigured = false;
-let restartSupported = false;
 
 // Must match the Transition enum names in the Android app.
 const TRANSITIONS = [
@@ -405,10 +461,38 @@ const TRANSITIONS = [
   ["ZOOM_IN", "Zoom in"],
   ["ZOOM_OUT", "Zoom out"],
 ];
-const selected = new Set(); // images selected for combine / fit
+
+let images = [];
+const selected = new Set();   // ids of the selected photos
+let lastClickedId = null;     // anchor for Shift-click range selection
+
+// Filter as set in the page (what the gallery shows) ...
+let includeTags = new Set();
+let excludeTags = new Set();
+let matchAll = true;
+// ... and what the frame was last told to play.
+let frame = null;
+
+let shownId = null;           // photo the frame last reported as displayed
+let frameOnline = false;
+let stateVersion = null;
+let draggedCard = null;
+let orderDirty = false;
+let transitionSaveTimer = null;
+let btInterval = null;
+let githubConfigured = false;
 
 const escapeHtml = (s) => String(s ?? "").replace(/[&<>"']/g,
   (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const plural = (n, word) => n + " " + word + (n === 1 ? "" : "s");
+const parseTags = (text) => {
+  const out = [];
+  for (const raw of text.split(/[,;]/)) {
+    const t = raw.trim().toLowerCase().replace(/\s+/g, " ");
+    if (t && !out.includes(t)) out.push(t);
+  }
+  return out;
+};
 
 async function api(path, opts) {
   const res = await fetch(path, opts);
@@ -419,88 +503,396 @@ async function api(path, opts) {
   }
   return res.json();
 }
+const sendJson = (path, method, body) => api(path, {
+  method: method,
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
 
-function setStatus(msg, kind = "") {
-  const el = $("#status");
+function toast(msg, kind = "") {
+  const el = $("#toast");
+  clearTimeout(toast.timer);
   el.textContent = msg;
-  el.className = "status " + kind;
-  if (msg) {
-    clearTimeout(setStatus._t);
-    setStatus._t = setTimeout(() => { el.textContent = ""; el.className = "status"; }, 6000);
+  el.className = kind;
+  el.hidden = !msg;
+  // Errors stay until the next message; the rest fades by itself.
+  if (msg && kind !== "error" && kind !== "busy") {
+    toast.timer = setTimeout(() => { el.hidden = true; }, 5000);
   }
 }
 
-function allTags() {
+// ---------------------------------------------------------------- tags
+
+function tagCounts() {
   const m = new Map();
   for (const img of images) for (const t of img.tags) m.set(t, (m.get(t) || 0) + 1);
   return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 }
 
-function visibleImages() {
-  const sel = [...selectedTags];
-  const excl = [...excludedTags];
-  return images.filter((img) => {
-    if (sel.length) {
-      const included = matchAll
-        ? sel.every((t) => img.tags.includes(t))
-        : sel.some((t) => img.tags.includes(t));
-      if (!included) return false;
-    }
-    if (excl.length && excl.some((t) => img.tags.includes(t))) return false;
-    return true;
-  });
+function matches(img, include, exclude, all) {
+  if (include.length) {
+    const ok = all
+      ? include.every((t) => img.tags.includes(t))
+      : include.some((t) => img.tags.includes(t));
+    if (!ok) return false;
+  }
+  return !exclude.some((t) => img.tags.includes(t));
 }
 
-function renderTagBar() {
-  const tags = allTags();
-  const includeWrap = $("#tagChips");
-  const excludeWrap = $("#excludeTagChips");
-  includeWrap.innerHTML = "";
-  excludeWrap.innerHTML = "";
+const visibleImages = () =>
+  images.filter((img) => matches(img, [...includeTags], [...excludeTags], matchAll));
+
+function renderFilter() {
+  const tags = tagCounts();
+  const known = new Set(tags.map(([name]) => name));
+  // Forget filter entries whose tag no longer exists.
+  for (const set of [includeTags, excludeTags]) {
+    for (const t of [...set]) if (!known.has(t)) set.delete(t);
+  }
+  const wrap = $("#tagChips");
+  wrap.innerHTML = "";
+  for (const [name, count] of tags) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    const state = includeTags.has(name) ? "on" : excludeTags.has(name) ? "exclude" : "";
+    chip.className = "chip " + state;
+    chip.dataset.tag = name;
+    chip.title = state === "on" ? "Showing only photos with this tag — click to hide them instead"
+      : state === "exclude" ? "Hiding photos with this tag — click to stop filtering on it"
+      : "Click to show only photos with this tag";
+    chip.innerHTML = escapeHtml(name) + '<span class="n">' + count + "</span>";
+    wrap.appendChild(chip);
+  }
+  const filtering = includeTags.size + excludeTags.size > 0;
+  $("#matchMode").hidden = includeTags.size < 2;
+  $("#matchMode").value = matchAll ? "all" : "any";
+  $("#clearFilterBtn").hidden = !filtering;
+  $("#filterHint").textContent = !tags.length
+    ? "No tags yet. Select photos below to tag them."
+    : filtering ? "" : "Click a tag to show only those photos, click again to hide them.";
+
+  $("#tagList").innerHTML = tags.map(([name]) => '<option value="' + escapeHtml(name) + '">').join("");
+  renderTagManager(tags);
+}
+
+function renderTagManager(tags) {
+  const list = $("#tagManager");
   if (!tags.length) {
-    const empty = '<span style="color:var(--muted);font-size:13px;">No tags yet — add tags to images below.</span>';
-    includeWrap.innerHTML = empty;
-    excludeWrap.innerHTML = empty;
+    list.innerHTML = '<div class="hint">No tags yet.</div>';
     return;
   }
-  for (const [name, count] of tags) {
-    const includeChip = document.createElement("button");
-    includeChip.type = "button";
-    includeChip.className = "chip" + (selectedTags.has(name) ? " on" : "");
-    includeChip.textContent = name + " (" + count + ")";
-    includeChip.addEventListener("click", () => {
-      if (selectedTags.has(name)) selectedTags.delete(name); else selectedTags.add(name);
-      renderTagBar();
-      renderGallery();
-    });
-    includeWrap.appendChild(includeChip);
+  list.innerHTML = tags.map(([name, count]) =>
+    '<div class="tag-row" data-tag="' + escapeHtml(name) + '">' +
+      '<span class="name">' + escapeHtml(name) + "</span>" +
+      '<span class="hint">' + plural(count, "photo") + "</span>" +
+      '<button class="small" data-tagact="rename" type="button">Rename</button>' +
+      '<button class="small danger" data-tagact="delete" type="button">Delete</button>' +
+    "</div>").join("");
+}
 
-    const excludeChip = document.createElement("button");
-    excludeChip.type = "button";
-    excludeChip.className = "chip" + (excludedTags.has(name) ? " exclude" : "");
-    excludeChip.textContent = name + " (" + count + ")";
-    excludeChip.addEventListener("click", () => {
-      if (excludedTags.has(name)) excludedTags.delete(name); else excludedTags.add(name);
-      renderTagBar();
-      renderGallery();
-    });
-    excludeWrap.appendChild(excludeChip);
+// ------------------------------------------------------------- gallery
+
+function cardHtml(img) {
+  const tagHtml = img.tags.map((t) =>
+    '<span class="tag">' + escapeHtml(t) +
+    '<button class="tag-x" data-tag="' + escapeHtml(t) + '" title="Remove tag" type="button">×</button></span>'
+  ).join("");
+  const isShown = frameOnline && img.id === shownId;
+  return '<div class="imgwrap" title="Click to select">' +
+      (isShown ? '<span class="onframe-badge">On frame</span>' : "") +
+      '<span class="mark">✓</span>' +
+      '<img src="' + img.thumb + '" loading="lazy" alt=""></div>' +
+    '<div class="meta">' +
+      '<div class="name" title="' + escapeHtml(img.name) + '">' + escapeHtml(img.name || "untitled") + "</div>" +
+      '<div class="dims">' + img.width + "×" + img.height + "</div>" +
+      '<div class="tags">' + tagHtml +
+        '<button class="tag-add" type="button">+ tag</button>' +
+      "</div>" +
+    "</div>" +
+    '<div class="actions">' +
+      '<button data-act="display" type="button">Show on frame</button>' +
+      '<button data-act="delete" class="danger" type="button" title="Delete this photo">Delete</button>' +
+    "</div>";
+}
+
+function makeCard(img) {
+  const card = document.createElement("div");
+  card.className = "card" + (selected.has(img.id) ? " selected" : "") +
+    (frameOnline && img.id === shownId ? " onframe" : "");
+  card.dataset.id = img.id;
+  card.draggable = true;
+  card.innerHTML = cardHtml(img);
+  return card;
+}
+
+const cardFor = (id) => document.querySelector('.card[data-id="' + id + '"]');
+
+function renderGallery() {
+  const g = $("#gallery");
+  const list = visibleImages();
+  g.innerHTML = "";
+  if (!images.length) {
+    g.innerHTML = '<div class="empty">No photos yet. Upload some with the button above, or drop them on this page.</div>';
+  } else if (!list.length) {
+    g.innerHTML = '<div class="empty">No photos match the filter.</div>';
+  } else {
+    for (const img of list) g.appendChild(makeCard(img));
+  }
+  $("#galleryCount").textContent = list.length === images.length
+    ? plural(images.length, "photo")
+    : list.length + " of " + plural(images.length, "photo");
+  $("#selectAllBtn").hidden = !list.length;
+  $("#selectUntaggedBtn").hidden = !list.some((img) => !img.tags.length) ||
+    !list.some((img) => img.tags.length);
+  renderSelection();
+  renderSlideshowNote();
+}
+
+/** Everything that depends on the image list or the filter. */
+function renderAll() {
+  renderFilter();
+  renderGallery();
+}
+
+// ----------------------------------------------------------- selection
+
+function renderSelection() {
+  const ids = new Set(images.map((img) => img.id));
+  for (const id of [...selected]) if (!ids.has(id)) selected.delete(id);
+  for (const card of document.querySelectorAll(".card")) {
+    card.classList.toggle("selected", selected.has(Number(card.dataset.id)));
+  }
+  const n = selected.size;
+  $("#selCount").textContent = n;
+  $("#selectionBar").hidden = n === 0;
+  document.body.classList.toggle("has-selection", n > 0);
+  if (!n) return;
+
+  const hidden = [...selected].filter((id) => !cardFor(id)).length;
+  $("#selCount").title = hidden ? hidden + " of them hidden by the filter" : "";
+  const tags = new Set();
+  for (const img of images) if (selected.has(img.id)) img.tags.forEach((t) => tags.add(t));
+  const sel = $("#bulkRemoveSel");
+  sel.innerHTML = '<option value="">Remove tag…</option>' +
+    [...tags].sort().map((t) => '<option value="' + escapeHtml(t) + '">' + escapeHtml(t) + "</option>").join("");
+  sel.disabled = !tags.size;
+  $("#fitBtn").disabled = n !== 1;
+  $("#combineBtn").disabled = n > 12;
+  $("#bulkDeleteBtn").textContent = "Delete " + plural(n, "photo");
+}
+
+function selectOnly(ids) {
+  selected.clear();
+  ids.forEach((id) => selected.add(id));
+  lastClickedId = null;
+  renderSelection();
+}
+
+function toggleSelect(id, range) {
+  const order = [...document.querySelectorAll(".card")].map((c) => Number(c.dataset.id));
+  const from = order.indexOf(lastClickedId);
+  const to = order.indexOf(id);
+  if (range && from >= 0 && to >= 0) {
+    for (let i = Math.min(from, to); i <= Math.max(from, to); i++) selected.add(order[i]);
+  } else if (selected.has(id)) {
+    selected.delete(id);
+  } else {
+    selected.add(id);
+  }
+  lastClickedId = id;
+  renderSelection();
+}
+
+async function bulkTags(add, remove) {
+  const ids = [...selected];
+  if (!ids.length) return;
+  try {
+    const data = await sendJson("/api/images/tags", "POST", { image_ids: ids, add: add, remove: remove });
+    for (const img of images) {
+      const tags = data.images[String(img.id)];
+      if (tags) img.tags = tags;
+    }
+    renderAll();
+    const n = Object.keys(data.images).length;
+    toast(data.added.length
+      ? "Added " + data.added.join(", ") + " to " + plural(n, "photo")
+      : "Removed " + data.removed.join(", ") + " from " + plural(n, "photo"), "ok");
+  } catch (e) {
+    toast("Could not change tags: " + e.message, "error");
   }
 }
 
-function renderTransitionPanel() {
-  const panel = $("#transitionPanel");
-  panel.innerHTML = TRANSITIONS.map(([name, label]) =>
-    '<label><input type="checkbox" data-transition="' + name + '"' +
-      (enabledTransitions.has(name) ? " checked" : "") + "> " + label + "</label>"
-  ).join("") +
-    '<span class="hint">None checked = all transitions</span>';
-}
+// --------------------------------------------------------- frame state
 
 function updateFrameStatus() {
   const el = $("#frameStatus");
-  el.textContent = frameOnline ? "● Frame online" : "● Frame offline";
-  el.className = "frame-status " + (frameOnline ? "online" : "offline");
+  el.textContent = frameOnline ? "Frame online" : "Frame offline";
+  el.className = "pill " + (frameOnline ? "online" : "offline");
+}
+
+const sameSet = (set, list) => set.size === list.length && list.every((t) => set.has(t));
+
+function renderSlideshowNote() {
+  const note = $("#slideshowNote");
+  note.className = "";
+  if (!frame) { note.textContent = ""; return; }
+  if (frame.mode === "single") {
+    const img = images.find((i) => i.id === frame.current_image_id);
+    note.textContent = "The frame is held on " + (img ? "“" + (img.name || "untitled") + "”" : "one photo") +
+      ". Start the slideshow to move on.";
+    return;
+  }
+  const playing = images.filter((img) => matches(img, frame.tags, frame.exclude_tags, frame.match_all));
+  const dirty = !sameSet(includeTags, frame.tags) || !sameSet(excludeTags, frame.exclude_tags) ||
+    (includeTags.size > 1 && matchAll !== frame.match_all) ||
+    $("#randomOrder").checked !== frame.random ||
+    (parseInt($("#interval").value, 10) || 0) !== frame.interval_seconds;
+  if (dirty) {
+    note.className = "dirty";
+    note.textContent = "Changed — press Start slideshow to send this to the frame (" +
+      plural(visibleImages().length, "photo") + ").";
+    return;
+  }
+  const parts = [plural(playing.length, "photo")];
+  if (frame.tags.length) parts.push("tagged " + frame.tags.join(frame.match_all ? " + " : " or "));
+  if (frame.exclude_tags.length) parts.push("without " + frame.exclude_tags.join(", "));
+  note.textContent = "Playing " + parts.join(", ") + ".";
+}
+
+function applyFrameInfo(data) {
+  const filter = data.filter || {};
+  frame = {
+    mode: data.mode,
+    current_image_id: data.current_image_id ?? (data.image ? data.image.id : null),
+    tags: filter.tags || [],
+    exclude_tags: filter.exclude_tags || [],
+    match_all: filter.match_all !== false,
+    random: !!data.random,
+    interval_seconds: data.interval_seconds,
+  };
+  renderUpdateInfo(data.update);
+  renderRecommendations(data.version_info);
+}
+
+async function loadFrameState() {
+  try {
+    const data = await api("/api/frame/current");
+    applyFrameInfo(data);
+    stateVersion = data.version;
+    $("#interval").value = frame.interval_seconds;
+    $("#randomOrder").checked = frame.random;
+    includeTags = new Set(frame.tags);
+    excludeTags = new Set(frame.exclude_tags);
+    matchAll = frame.match_all;
+    shownId = data.shown_image_id ?? null;
+    frameOnline = !!data.online;
+    updateFrameStatus();
+    $("#showClock").checked = !!data.show_clock;
+    $("#blurBackground").checked = !!data.blur_background;
+    renderTransitionPanel(new Set(data.transitions || []));
+    renderAll();
+  } catch (e) {
+    toast("Could not read the frame state: " + e.message, "error");
+  }
+}
+
+const busyEditing = () => draggedCard || document.querySelector(".tag-input");
+
+async function refreshStatus() {
+  let data;
+  try { data = await api("/api/frame/status"); } catch (e) { return; }
+  applyFrameInfo(data);
+  const next = data.shown_image_id ?? null;
+  const nextOnline = !!data.online;
+  if ((next !== shownId || nextOnline !== frameOnline) && !draggedCard) {
+    const previous = shownId;
+    shownId = next;
+    frameOnline = nextOnline;
+    updateFrameStatus();
+    updateShownBadge(previous, frameOnline ? shownId : null);
+  }
+  // The library changed somewhere else (another browser, a new upload).
+  if (data.version !== undefined && data.version !== stateVersion && !busyEditing()) {
+    stateVersion = data.version;
+    await loadImages(true);
+  } else {
+    renderSlideshowNote();
+  }
+}
+
+// Move the "On frame" marker without rebuilding the gallery.
+function updateShownBadge(previousId, nextId) {
+  for (const id of [previousId, nextId]) {
+    if (id === null) continue;
+    const card = cardFor(id);
+    if (!card) continue;
+    const wrap = card.querySelector(".imgwrap");
+    const badge = wrap.querySelector(".onframe-badge");
+    card.classList.toggle("onframe", id === nextId);
+    if (id === nextId && !badge) {
+      const el = document.createElement("span");
+      el.className = "onframe-badge";
+      el.textContent = "On frame";
+      wrap.prepend(el);
+    } else if (id !== nextId && badge) {
+      badge.remove();
+    }
+  }
+}
+
+async function loadImages(quiet) {
+  try {
+    const data = await api("/api/images");
+    images = data.images;
+    renderAll();
+  } catch (e) {
+    if (!quiet) toast("Could not load the photos: " + e.message, "error");
+  }
+}
+
+/** Remember the version our own change produced, so it is not seen as foreign. */
+async function syncVersion() {
+  try { stateVersion = (await api("/api/frame/status")).version; } catch (e) { /* next poll */ }
+}
+
+// ------------------------------------------------------------ settings
+
+function renderTransitionPanel(enabled) {
+  $("#transitionPanel").innerHTML = TRANSITIONS.map(([name, label]) =>
+    '<label class="check"><input type="checkbox" data-transition="' + name + '"' +
+      (enabled.has(name) ? " checked" : "") + "> " + label + "</label>").join("");
+}
+
+async function saveTransitions() {
+  const list = [...document.querySelectorAll("input[data-transition]:checked")]
+    .map((el) => el.dataset.transition);
+  try {
+    const data = await sendJson("/api/frame/transitions", "PUT", { transitions: list });
+    toast(data.transitions.length ? "Transitions saved" : "All transitions enabled", "ok");
+  } catch (e) {
+    toast("Could not save transitions: " + e.message, "error");
+  }
+}
+
+function renderUploadTags(data, fillInput) {
+  if (fillInput) $("#uploadTags").value = data.upload_tags.join(", ");
+  $("#uploadTagsPreview").textContent = data.upload_tags_now.length
+    ? "A photo uploaded now gets: " + data.upload_tags_now.join(", ")
+    : "New photos get no tags.";
+}
+
+async function loadSettings() {
+  try { renderUploadTags(await api("/api/settings"), true); } catch (e) { /* optional */ }
+}
+
+async function saveUploadTags() {
+  try {
+    const data = await sendJson("/api/settings/upload-tags", "PUT", { tags: [$("#uploadTags").value] });
+    renderUploadTags(data, true);
+    toast("Upload tags saved", "ok");
+  } catch (e) {
+    toast("Could not save upload tags: " + e.message, "error");
+  }
 }
 
 function renderUpdateInfo(update) {
@@ -513,92 +905,73 @@ function renderUpdateInfo(update) {
   }
   const status = update.status || "pending";
   const name = update.name || "update";
-  switch (status) {
-    case "pending": info.textContent = "Update pending: " + name; break;
-    case "installing": info.textContent = "Installing: " + name; break;
-    case "installed": info.textContent = "Installed: " + name; break;
-    case "failed":
-      info.textContent = "Update failed: " + name +
-        (update.error ? " — " + update.error : " — no error reported");
-      break;
-    case "canceled": info.textContent = "Update canceled: " + name; break;
-    default: info.textContent = "Update " + status + ": " + name;
-  }
+  const text = {
+    pending: "Update pending: " + name,
+    installing: "Installing: " + name,
+    installed: "Installed: " + name,
+    failed: "Update failed: " + name + (update.error ? " — " + update.error : " — no error reported"),
+    canceled: "Update canceled: " + name,
+  }[status] || "Update " + status + ": " + name;
+  info.textContent = text;
   cancel.hidden = !(status === "pending" || status === "installing" || status === "failed");
 }
 
 function renderRecommendations(info) {
   const el = $("#recommendations");
-  restartSupported = !!(info && info.restart_supported);
-  const githubRestart = $("#restartServerBtn");
-  if (githubRestart) githubRestart.hidden = !restartSupported;
-
+  const restartSupported = !!(info && info.restart_supported);
+  $("#restartServerBtn").hidden = !restartSupported;
+  if (info) {
+    $("#versionInfo").textContent =
+      (info.frame_version_code
+        ? "Frame app " + (info.frame_version_name || "?") + " (build " + info.frame_version_code + ")"
+        : "The frame has not reported its version yet") +
+      " · server version " + info.server_version;
+  }
   const messages = [];
   let showRestart = false;
-  if (info) {
-    if (info.server_behind) {
-      messages.push(
-        "Server code was updated (file version " + info.server_files_version +
-        ", running " + info.server_version + "). Restart the server."
-      );
-      showRestart = restartSupported;
-    }
-    if (info.frame_behind) {
-      messages.push(
-        "Frame is running build " + info.frame_version_code +
-        " but build " + info.queued_update_build +
-        " is queued. Push the update or approve it on the frame."
-      );
-    }
+  if (info && info.server_behind) {
+    messages.push("Server code was updated (file version " + info.server_files_version +
+      ", running " + info.server_version + "). Restart the server.");
+    showRestart = restartSupported;
   }
-  if (!messages.length) {
-    el.hidden = true;
-    el.innerHTML = "";
-    return;
+  if (info && info.frame_behind) {
+    messages.push("Frame is running build " + info.frame_version_code + " but build " +
+      info.queued_update_build + " is queued. Push the update or approve it on the frame.");
   }
-  el.innerHTML = messages.map((m) => "<div>⚠ " + escapeHtml(m) + "</div>").join("") +
-    (showRestart
-      ? '<button id="restartFromRecommendation" type="button" class="danger">Restart server</button>'
-      : "");
-  el.hidden = false;
+  const html = messages.map((m) => "<div>" + escapeHtml(m) + "</div>").join("") +
+    (showRestart ? '<button id="restartFromRecommendation" type="button" class="small danger">Restart server</button>' : "");
+  if (el.innerHTML !== html) el.innerHTML = html;
+  el.hidden = !messages.length;
 }
 
 function renderBluetooth(devices) {
   const list = $("#btList");
   list.innerHTML = "";
   if (!devices || !devices.length) {
-    list.innerHTML = '<div class="bt-empty">No Bluetooth devices seen yet.</div>';
+    list.innerHTML = '<div class="hint">No Bluetooth devices seen yet.</div>';
     return;
   }
   for (const dev of devices) {
     const row = document.createElement("div");
     row.className = "bt-row";
-
     const name = document.createElement("div");
     name.className = "bt-name";
     name.textContent = dev.name || "(unnamed device)";
-
     const meta = document.createElement("div");
     meta.className = "bt-meta";
-    const rssi = dev.rssi === null || dev.rssi === undefined ? "?" : dev.rssi;
     const seen = dev.last_seen ? new Date(dev.last_seen).toLocaleString() : "unknown";
-    const count = dev.seen_count === null || dev.seen_count === undefined
-      ? 0 : dev.seen_count;
-    meta.textContent = dev.address + " · seen " + count + "× · RSSI " +
-      rssi + " · " + seen;
-
+    meta.textContent = dev.address + " · seen " + (dev.seen_count ?? 0) + "× · RSSI " +
+      (dev.rssi ?? "?") + " · " + seen;
     const input = document.createElement("input");
+    input.type = "text";
     input.placeholder = "Owner / comment";
     input.value = dev.comment || "";
     input.dataset.address = dev.address;
     input.dataset.saved = dev.comment || "";
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") input.blur();
-    });
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") input.blur(); });
     input.addEventListener("blur", () => {
       if (input.value !== input.dataset.saved) saveBtComment(input);
     });
-
     row.append(name, meta, input);
     list.appendChild(row);
   }
@@ -606,208 +979,317 @@ function renderBluetooth(devices) {
 
 async function loadBluetooth() {
   try {
-    const data = await api("/api/bluetooth");
-    renderBluetooth(data.devices);
+    renderBluetooth((await api("/api/bluetooth")).devices);
   } catch (e) {
-    setStatus("Failed to load Bluetooth devices: " + e.message, "error");
+    toast("Could not load Bluetooth devices: " + e.message, "error");
   }
 }
 
 async function saveBtComment(input) {
-  const address = input.dataset.address;
   const comment = input.value;
   try {
-    const data = await api(
-      "/api/bluetooth/" + encodeURIComponent(address) + "/comment",
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comment: comment }),
-      }
-    );
+    const data = await sendJson(
+      "/api/bluetooth/" + encodeURIComponent(input.dataset.address) + "/comment", "PUT",
+      { comment: comment });
     input.dataset.saved = comment;
     if (data.device) input.value = data.device.comment || "";
-    setStatus("Bluetooth comment saved", "ok");
+    toast("Comment saved", "ok");
   } catch (e) {
-    setStatus("Could not save comment: " + e.message, "error");
-  }
-}
-
-function btInputFocused() {
-  const active = document.activeElement;
-  return active && active.tagName === "INPUT" && active.closest("#btList");
-}
-
-async function loadGithubStatus() {
-  try {
-    const data = await api("/api/github/status");
-    githubConfigured = !!data.configured;
-    $("#githubStatus").textContent =
-      (githubConfigured ? "Token configured" : "No token configured") +
-      " · " + data.repo;
-    $("#downloadGithubBtn").disabled = !githubConfigured;
-  } catch (e) {
-    setStatus("Could not read GitHub status: " + e.message, "error");
+    toast("Could not save comment: " + e.message, "error");
   }
 }
 
 function setGithubConfigured(configured, repo) {
   githubConfigured = configured;
   $("#githubStatus").textContent =
-    (configured ? "Token configured" : "No token configured") +
-    (repo ? " · " + repo : "");
+    (configured ? "Token configured" : "No token configured") + (repo ? " · " + repo : "");
   $("#downloadGithubBtn").disabled = !configured;
+}
+
+async function loadGithubStatus() {
+  try {
+    const data = await api("/api/github/status");
+    setGithubConfigured(!!data.configured, data.repo);
+  } catch (e) {
+    $("#githubStatus").textContent = "Could not read GitHub status";
+  }
 }
 
 async function restartServer() {
   if (!confirm("Restart the server now?")) return;
-  setStatus("Restarting server…");
+  toast("Restarting server…", "busy");
   try {
     await api("/api/server/restart", { method: "POST" });
   } catch (e) {
     // The connection often drops while the process re-execs; poll instead.
   }
-  await waitForServerBack();
-}
-
-async function waitForServerBack() {
   for (let attempt = 0; attempt < 40; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, 1000));
     try {
       const response = await fetch("/api/health", { cache: "no-store" });
-      if (response.ok) {
-        window.location.reload();
-        return;
-      }
-    } catch (e) {
-      // still down / restarting
-    }
+      if (response.ok) { window.location.reload(); return; }
+    } catch (e) { /* still restarting */ }
   }
-  setStatus("Server did not come back; check its logs", "error");
+  toast("Server did not come back; check its logs", "error");
 }
 
-function renderGallery() {
-  const g = $("#gallery");
-  const list = visibleImages();
-  g.innerHTML = "";
-  if (!images.length) {
-    g.innerHTML = '<div class="empty">No images yet. Upload some, or build a portrait composite.</div>';
-    return;
-  }
-  if (!list.length) {
-    g.innerHTML = '<div class="empty">No images match the selected tags.</div>';
-    return;
-  }
-  for (const img of list) {
-    const card = document.createElement("div");
-    const isShown = frameOnline && shownId !== null && img.id === shownId;
-    card.className = "card" + (selected.has(img.id) ? " selected" : "") +
-      (isShown ? " onframe" : "");
-    card.dataset.id = img.id;
-    card.draggable = true;
-    const tagHtml = img.tags.map((t) =>
-      '<span class="tag">' + escapeHtml(t) +
-      '<button class="tag-x" data-id="' + img.id + '" data-tag="' + escapeHtml(t) + '" title="Remove tag">×</button></span>'
-    ).join("");
-    card.innerHTML =
-      '<div class="imgwrap">' +
-        (isShown ? '<span class="onframe-badge">▶ On frame</span>' : "") +
-        '<img src="' + img.thumb + '" loading="lazy" alt=""></div>' +
-      '<div class="meta">' +
-        '<div class="name" title="' + escapeHtml(img.name) + '">' + escapeHtml(img.name || "untitled") + "</div>" +
-        '<div class="dims">' + img.width + "×" + img.height + "</div>" +
-        '<div class="tags" data-id="' + img.id + '">' + tagHtml +
-          '<button class="tag-add" data-id="' + img.id + '">+ tag</button>' +
-        "</div>" +
-      "</div>" +
-      '<div class="actions">' +
-        '<button data-act="display" data-id="' + img.id + '">Show on frame</button>' +
-        '<button data-act="select" data-id="' + img.id + '">' + (selected.has(img.id) ? "Deselect" : "Select") + "</button>" +
-        '<button data-act="delete" data-id="' + img.id + '" class="danger">Delete</button>' +
-      "</div>";
-    g.appendChild(card);
+function setDrawer(open) {
+  $("#drawer").hidden = !open;
+  $("#scrim").hidden = !open;
+  if (open) {
+    loadSettings();
+    loadGithubStatus();
+    if ($("#bluetoothSection").open) loadBluetooth();
   }
 }
 
-function updateBar() {
-  $("#selCount").textContent = selected.size;
-  $("#combineBar").classList.toggle("hidden", selected.size === 0);
-}
+// -------------------------------------------------------------- upload
 
-async function loadImages() {
+async function uploadFiles(fileList) {
+  const files = [...fileList].filter((f) => !f.type || f.type.startsWith("image/"));
+  if (!files.length) return;
+  const fd = new FormData();
+  for (const f of files) fd.append("files", f);
+  toast("Uploading " + plural(files.length, "photo") + "…", "busy");
   try {
-    const data = await api("/api/images");
-    images = data.images;
-    renderGallery();
-    renderTagBar();
+    const data = await api("/api/images", { method: "POST", body: fd });
+    await loadImages();
+    await syncVersion();
+    // Select the new photos, so they can be tagged in one go.
+    selectOnly(data.images.map((img) => img.id));
+    const last = cardFor(data.images[data.images.length - 1].id);
+    if (last) last.scrollIntoView({ behavior: "smooth", block: "center" });
+    let msg = "Uploaded " + plural(data.images.length, "photo");
+    if (data.tags && data.tags.length) msg += ", tagged " + data.tags.join(", ");
+    if (data.skipped && data.skipped.length) msg += ". Could not read: " + data.skipped.join(", ");
+    else if (!last) msg += " (hidden by the current filter)";
+    toast(msg, data.skipped && data.skipped.length ? "error" : "ok");
   } catch (e) {
-    setStatus("Failed to load images: " + e.message, "error");
+    toast("Upload failed: " + e.message, "error");
   }
 }
 
-async function loadFrameState() {
+$("#fileInput").addEventListener("change", async (e) => {
+  await uploadFiles(e.target.files);
+  e.target.value = "";
+});
+
+const hasFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes("Files");
+let dropDepth = 0;
+window.addEventListener("dragenter", (e) => {
+  if (!hasFiles(e)) return;
+  dropDepth++;
+  $("#dropZone").hidden = false;
+});
+window.addEventListener("dragleave", (e) => {
+  if (!hasFiles(e)) return;
+  if (--dropDepth <= 0) { dropDepth = 0; $("#dropZone").hidden = true; }
+});
+window.addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
+window.addEventListener("drop", (e) => {
+  if (!hasFiles(e)) return;
+  e.preventDefault();
+  dropDepth = 0;
+  $("#dropZone").hidden = true;
+  uploadFiles(e.dataTransfer.files);
+});
+
+// ----------------------------------------------------- header controls
+
+$("#slideshowBtn").addEventListener("click", async () => {
   try {
-    const data = await api("/api/frame/current");
+    const data = await sendJson("/api/frame/slideshow", "POST", {
+      interval_seconds: parseInt($("#interval").value, 10) || 30,
+      tags: [...includeTags],
+      exclude_tags: [...excludeTags],
+      match_all: matchAll,
+      random: $("#randomOrder").checked,
+    });
     $("#interval").value = data.interval_seconds;
-    selectedTags = new Set((data.filter && data.filter.tags) || []);
-    excludedTags = new Set((data.filter && data.filter.exclude_tags) || []);
-    matchAll = data.filter ? data.filter.match_all : true;
-    shownId = data.shown_image_id ?? null;
-    frameOnline = !!data.online;
-    updateFrameStatus();
-    $("#matchMode").value = matchAll ? "all" : "any";
-    $("#randomOrder").checked = !!data.random;
-    $("#showClock").checked = !!data.show_clock;
-    $("#blurBackground").checked = !!data.blur_background;
-    renderRecommendations(data.version_info);
-    enabledTransitions = new Set(data.transitions || []);
-    renderTransitionPanel();
-    renderUpdateInfo(data.update);
-    renderTagBar();
-    renderGallery();
-  } catch (e) { /* leave defaults */ }
-}
+    frame = Object.assign(frame || {}, {
+      mode: "slideshow", current_image_id: null,
+      tags: data.tags, exclude_tags: data.exclude_tags, match_all: data.match_all,
+      random: data.random, interval_seconds: data.interval_seconds,
+    });
+    await syncVersion();
+    renderSlideshowNote();
+    toast("Slideshow started: " + plural(visibleImages().length, "photo") + ", every " +
+      data.interval_seconds + " s, " + (data.random ? "random order" : "gallery order"), "ok");
+  } catch (e) {
+    toast("Could not start the slideshow: " + e.message, "error");
+  }
+});
 
-async function refreshShown() {
+$("#interval").addEventListener("input", renderSlideshowNote);
+$("#randomOrder").addEventListener("change", renderSlideshowNote);
+
+$("#tagChips").addEventListener("click", (e) => {
+  const chip = e.target.closest(".chip");
+  if (!chip) return;
+  const name = chip.dataset.tag;
+  // off → include → exclude → off
+  if (includeTags.has(name)) { includeTags.delete(name); excludeTags.add(name); }
+  else if (excludeTags.has(name)) excludeTags.delete(name);
+  else includeTags.add(name);
+  renderAll();
+});
+
+$("#matchMode").addEventListener("change", () => {
+  matchAll = $("#matchMode").value === "all";
+  renderGallery();
+});
+
+$("#clearFilterBtn").addEventListener("click", () => {
+  includeTags.clear();
+  excludeTags.clear();
+  renderAll();
+});
+
+$("#selectAllBtn").addEventListener("click", () => {
+  visibleImages().forEach((img) => selected.add(img.id));
+  renderSelection();
+});
+
+$("#selectUntaggedBtn").addEventListener("click", () => {
+  selectOnly(visibleImages().filter((img) => !img.tags.length).map((img) => img.id));
+});
+
+$("#recommendations").addEventListener("click", (e) => {
+  if (e.target.closest("#restartFromRecommendation")) restartServer();
+});
+
+// ------------------------------------------------------- selection bar
+
+function addBulkTags() {
+  const tags = parseTags($("#bulkTagInput").value);
+  if (!tags.length) { $("#bulkTagInput").focus(); return; }
+  $("#bulkTagInput").value = "";
+  bulkTags(tags, []);
+}
+$("#bulkAddBtn").addEventListener("click", addBulkTags);
+$("#bulkTagInput").addEventListener("keydown", (e) => { if (e.key === "Enter") addBulkTags(); });
+
+$("#bulkRemoveSel").addEventListener("change", (e) => {
+  const tag = e.target.value;
+  if (tag) bulkTags([], [tag]);
+});
+
+$("#clearSelBtn").addEventListener("click", () => selectOnly([]));
+
+$("#bulkDeleteBtn").addEventListener("click", async () => {
+  const ids = [...selected];
+  if (!confirm("Delete " + plural(ids.length, "photo") + "? This cannot be undone.")) return;
   try {
-    const data = await api("/api/frame/status");
-    const next = data.shown_image_id ?? null;
-    const nextOnline = !!data.online;
-    if ((next !== shownId || nextOnline !== frameOnline) && !draggedCard) {
-      const previous = shownId;
-      shownId = next;
-      frameOnline = nextOnline;
-      updateFrameStatus();
-      updateShownBadge(previous, frameOnline ? shownId : null);
-    }
-    renderUpdateInfo(data.update);
-    renderRecommendations(data.version_info);
-  } catch (e) { /* frame state is optional here */ }
-}
+    const data = await sendJson("/api/images/delete", "POST", { image_ids: ids });
+    selected.clear();
+    await loadImages();
+    await syncVersion();
+    toast("Deleted " + plural(data.deleted, "photo"), "ok");
+  } catch (e) {
+    toast("Delete failed: " + e.message, "error");
+  }
+});
 
-// Move the "On frame" marker without rebuilding the gallery (which would
-// reload every thumbnail and make the page flash).
-function updateShownBadge(previousId, nextId) {
-  for (const id of [previousId, nextId]) {
-    if (id === null) continue;
-    const card = document.querySelector('.card[data-id="' + id + '"]');
-    if (!card) continue;
-    const wrap = card.querySelector(".imgwrap");
-    const badge = wrap ? wrap.querySelector(".onframe-badge") : null;
-    if (id === nextId) {
-      card.classList.add("onframe");
-      if (wrap && !badge) {
-        const el = document.createElement("span");
-        el.className = "onframe-badge";
-        el.textContent = "▶ On frame";
-        wrap.prepend(el);
-      }
-    } else {
-      card.classList.remove("onframe");
-      if (badge) badge.remove();
-    }
+async function makeEdit(path, body, done) {
+  toast("Working…", "busy");
+  try {
+    const data = await sendJson(path, "POST", body);
+    await loadImages();
+    await syncVersion();
+    selectOnly([data.image.id]);
+    const card = cardFor(data.image.id);
+    if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
+    toast(done, "ok");
+  } catch (e) {
+    toast("That did not work: " + e.message, "error");
   }
 }
+
+$("#combineBtn").addEventListener("click", () => {
+  // Stack in gallery order, not in the order the photos were clicked.
+  const ids = images.filter((img) => selected.has(img.id)).map((img) => img.id);
+  makeEdit("/api/edit/combine", { image_ids: ids }, "Created a portrait from " + plural(ids.length, "photo"));
+});
+
+$("#fitBtn").addEventListener("click", () => {
+  makeEdit("/api/edit/fit", { image_id: [...selected][0] }, "Created a portrait crop");
+});
+
+// ------------------------------------------------------- gallery events
+
+async function saveTags(id, tags) {
+  const img = images.find((i) => i.id === id);
+  if (!img) return;
+  try {
+    const data = await sendJson("/api/images/" + id + "/tags", "PUT", { tags: tags });
+    img.tags = [...data.tags].sort();
+    await syncVersion();
+  } catch (e) {
+    toast("Could not save tags: " + e.message, "error");
+  }
+  renderAll();
+}
+
+function beginAddTag(id) {
+  const card = cardFor(id);
+  const addBtn = card && card.querySelector(".tag-add");
+  if (!addBtn) return;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "tag-input";
+  input.placeholder = "tag, tag…";
+  input.setAttribute("list", "tagList");
+  addBtn.replaceWith(input);
+  input.focus();
+  let done = false;
+  const finish = (commit) => {
+    if (done) return;
+    done = true;
+    const img = images.find((i) => i.id === id);
+    const added = commit ? parseTags(input.value).filter((t) => !img.tags.includes(t)) : [];
+    if (img && added.length) saveTags(id, [...img.tags, ...added]);
+    else renderGallery();
+  };
+  input.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") finish(true);
+    else if (ev.key === "Escape") finish(false);
+  });
+  input.addEventListener("blur", () => finish(true));
+}
+
+$("#gallery").addEventListener("click", async (e) => {
+  const card = e.target.closest(".card");
+  if (!card) return;
+  const id = Number(card.dataset.id);
+  const img = images.find((i) => i.id === id);
+  if (!img) return;
+
+  const xBtn = e.target.closest(".tag-x");
+  if (xBtn) { saveTags(id, img.tags.filter((t) => t !== xBtn.dataset.tag)); return; }
+  if (e.target.closest(".tag-add")) { beginAddTag(id); return; }
+  if (e.target.closest(".imgwrap")) { toggleSelect(id, e.shiftKey); return; }
+
+  const btn = e.target.closest("button[data-act]");
+  if (!btn) return;
+  try {
+    if (btn.dataset.act === "display") {
+      await api("/api/images/" + id + "/display", { method: "POST" });
+      if (frame) { frame.mode = "single"; frame.current_image_id = id; }
+      await syncVersion();
+      renderSlideshowNote();
+      toast(frameOnline ? "Showing “" + (img.name || "untitled") + "” on the frame"
+        : "The frame is offline; it will show this photo when it is back", "ok");
+    } else if (btn.dataset.act === "delete") {
+      if (!confirm("Delete “" + (img.name || "untitled") + "”?")) return;
+      await api("/api/images/" + id, { method: "DELETE" });
+      await loadImages();
+      await syncVersion();
+      toast("Deleted", "ok");
+    }
+  } catch (err) {
+    toast(err.message, "error");
+  }
+});
 
 // Decide whether the dragged card goes after the hovered one. Cards in the
 // same grid row are compared horizontally; cards in different rows vertically.
@@ -829,345 +1311,15 @@ async function saveOrder(visibleIds) {
     visibleSet.has(img.id) ? visibleIds[visibleIndex++] : img.id);
   const byId = new Map(images.map((img) => [img.id, img]));
   try {
-    await api("/api/images/order", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image_ids: fullOrder }),
-    });
+    await sendJson("/api/images/order", "PUT", { image_ids: fullOrder });
     images = fullOrder.map((id) => byId.get(id));
-    setStatus("Order saved", "ok");
+    await syncVersion();
+    toast("Order saved", "ok");
   } catch (e) {
-    setStatus("Could not save order: " + e.message, "error");
+    toast("Could not save the order: " + e.message, "error");
     await loadImages();
   }
 }
-
-async function saveTags(id, tags) {
-  try {
-    await api("/api/images/" + id + "/tags", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tags: tags }),
-    });
-    await loadImages();
-  } catch (e) {
-    setStatus("Tag save failed: " + e.message, "error");
-  }
-}
-
-function removeTag(id, tag) {
-  const img = images.find((i) => i.id === id);
-  if (!img) return;
-  saveTags(id, img.tags.filter((t) => t !== tag));
-}
-
-function beginAddTag(id) {
-  const container = document.querySelector('.tags[data-id="' + id + '"]');
-  if (!container || container.querySelector(".tag-input")) return;
-  const addBtn = container.querySelector(".tag-add");
-  if (!addBtn) return;
-  const input = document.createElement("input");
-  input.className = "tag-input";
-  input.placeholder = "add tags";
-  addBtn.replaceWith(input);
-  input.focus();
-  let done = false;
-  const commit = () => {
-    if (done) return;
-    done = true;
-    const img = images.find((i) => i.id === id);
-    if (!img) return;
-    const next = [...img.tags];
-    for (const raw of input.value.split(/[,;]/)) {
-      const t = raw.trim().toLowerCase();
-      if (t && !next.includes(t)) next.push(t);
-    }
-    if (input.value.trim()) saveTags(id, next);
-    else renderGallery();
-  };
-  input.addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter") commit();
-    else if (ev.key === "Escape") { done = true; renderGallery(); }
-  });
-  input.addEventListener("blur", commit);
-}
-
-$("#fileInput").addEventListener("change", async (e) => {
-  const files = e.target.files;
-  if (!files.length) return;
-  const fd = new FormData();
-  for (const f of files) fd.append("files", f);
-  try {
-    setStatus("Uploading " + files.length + " image(s)…");
-    await api("/api/images", { method: "POST", body: fd });
-    setStatus("Uploaded " + files.length + " image(s)", "ok");
-    await loadImages();
-  } catch (err) {
-    setStatus("Upload failed: " + err.message, "error");
-  }
-  e.target.value = "";
-});
-
-$("#apkInput").addEventListener("change", async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const fd = new FormData();
-  fd.append("apk", file);
-  try {
-    setStatus("Uploading update…");
-    const data = await api("/api/update", { method: "POST", body: fd });
-    renderUpdateInfo(data.update);
-    setStatus("Update pushed — approve the install on the frame", "ok");
-  } catch (err) {
-    setStatus("Update push failed: " + err.message, "error");
-  }
-  e.target.value = "";
-});
-
-$("#cancelUpdateBtn").addEventListener("click", async () => {
-  if (!confirm("Cancel the pending update?")) return;
-  try {
-    const data = await api("/api/update/cancel", { method: "POST" });
-    renderUpdateInfo(data.update);
-    setStatus("Update canceled", "ok");
-  } catch (err) {
-    setStatus("Cancel failed: " + err.message, "error");
-  }
-});
-
-$("#bluetoothBtn").addEventListener("click", () => {
-  const panel = $("#bluetoothPanel");
-  const opening = panel.classList.contains("hidden");
-  panel.classList.toggle("hidden");
-  if (opening) {
-    loadBluetooth();
-    btInterval = setInterval(() => {
-      if (!btInputFocused()) loadBluetooth();
-    }, 15000);
-  } else if (btInterval) {
-    clearInterval(btInterval);
-    btInterval = null;
-  }
-});
-
-$("#btRefreshBtn").addEventListener("click", () => {
-  loadBluetooth();
-});
-
-$("#githubBtn").addEventListener("click", () => {
-  const panel = $("#githubPanel");
-  const opening = panel.classList.contains("hidden");
-  panel.classList.toggle("hidden");
-  if (opening) loadGithubStatus();
-});
-
-$("#saveGithubTokenBtn").addEventListener("click", async () => {
-  const token = $("#githubToken").value.trim();
-  if (!token) {
-    setStatus("Enter a GitHub token first", "error");
-    return;
-  }
-  try {
-    const data = await api("/api/github/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: token }),
-    });
-    $("#githubToken").value = "";
-    setGithubConfigured(!!data.configured, data.repo);
-    setStatus("GitHub token saved", "ok");
-  } catch (e) {
-    setStatus("Could not save GitHub token: " + e.message, "error");
-  }
-});
-
-$("#clearGithubTokenBtn").addEventListener("click", async () => {
-  if (!confirm("Clear the stored GitHub token?")) return;
-  try {
-    const data = await api("/api/github/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: "" }),
-    });
-    setGithubConfigured(!!data.configured, data.repo);
-    setStatus("GitHub token cleared", "ok");
-  } catch (e) {
-    setStatus("Could not clear GitHub token: " + e.message, "error");
-  }
-});
-
-$("#downloadGithubBtn").addEventListener("click", async () => {
-  $("#downloadGithubBtn").disabled = true;
-  setStatus("Downloading latest GitHub build…");
-  try {
-    const data = await api("/api/github/download", { method: "POST" });
-    renderUpdateInfo(data.update);
-    const name = data.update && data.update.name ? data.update.name : "update";
-    setStatus("Queued " + name + " — the frame will install it", "ok");
-  } catch (e) {
-    setStatus("GitHub download failed: " + e.message, "error");
-  } finally {
-    $("#downloadGithubBtn").disabled = !githubConfigured;
-  }
-});
-
-$("#restartServerBtn").addEventListener("click", restartServer);
-
-$("#restartFrameBtn").addEventListener("click", async () => {
-  if (!confirm("Restart the frame app now?")) return;
-  try {
-    await api("/api/frame/restart", { method: "POST" });
-    setStatus(
-      frameOnline ? "Frame restart requested" : "Frame is offline; restart queued",
-      "ok"
-    );
-  } catch (e) {
-    setStatus("Could not restart frame: " + e.message, "error");
-  }
-});
-
-$("#recommendations").addEventListener("click", (e) => {
-  if (e.target.closest("#restartFromRecommendation")) {
-    restartServer();
-  }
-});
-
-$("#slideshowBtn").addEventListener("click", async () => {
-  const interval = parseInt($("#interval").value, 10) || 30;
-  const tags = [...selectedTags];
-  const excludeTags = [...excludedTags];
-  const randomOrder = $("#randomOrder").checked;
-  try {
-    await api("/api/frame/slideshow", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        interval_seconds: interval,
-        tags: tags,
-        exclude_tags: excludeTags,
-        match_all: matchAll,
-        random: randomOrder,
-      }),
-    });
-    const orderText = randomOrder ? "random order" : "gallery order";
-    const parts = [tags.length ? "tags: " + tags.join(", ") : "all images"];
-    if (excludeTags.length) parts.push("excluding: " + excludeTags.join(", "));
-    setStatus(
-      "Slideshow started (" + parts.join("; ") + ") — " +
-        interval + "s, " + orderText,
-      "ok"
-    );
-  } catch (err) {
-    setStatus("Failed: " + err.message, "error");
-  }
-});
-
-$("#matchMode").addEventListener("change", () => {
-  matchAll = $("#matchMode").value === "all";
-  renderGallery();
-});
-
-$("#showClock").addEventListener("change", async () => {
-  const showClock = $("#showClock").checked;
-  try {
-    await api("/api/frame/clock", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ show_clock: showClock }),
-    });
-    setStatus(showClock ? "Clock shown" : "Clock hidden", "ok");
-  } catch (err) {
-    setStatus("Could not change clock: " + err.message, "error");
-    $("#showClock").checked = !showClock;
-  }
-});
-
-$("#blurBackground").addEventListener("change", async () => {
-  const blur = $("#blurBackground").checked;
-  try {
-    await api("/api/frame/blur", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ blur_background: blur }),
-    });
-    setStatus(blur ? "Blurred background enabled" : "Blurred background disabled", "ok");
-  } catch (err) {
-    setStatus("Could not change background: " + err.message, "error");
-    $("#blurBackground").checked = !blur;
-  }
-});
-
-$("#transitionBtn").addEventListener("click", () => {
-  $("#transitionPanel").classList.toggle("hidden");
-});
-
-$("#transitionPanel").addEventListener("change", (e) => {
-  if (!e.target.matches("input[data-transition]")) return;
-  clearTimeout(transitionSaveTimer);
-  transitionSaveTimer = setTimeout(saveTransitions, 250);
-});
-
-async function saveTransitions() {
-  const list = [...$("#transitionPanel").querySelectorAll("input[data-transition]:checked")]
-    .map((el) => el.dataset.transition);
-  try {
-    const data = await api("/api/frame/transitions", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ transitions: list }),
-    });
-    enabledTransitions = new Set(data.transitions || []);
-    setStatus(enabledTransitions.size
-      ? "Transitions saved"
-      : "All transitions enabled", "ok");
-  } catch (err) {
-    setStatus("Could not save transitions: " + err.message, "error");
-    renderTransitionPanel();
-  }
-}
-
-$("#clearFilterBtn").addEventListener("click", () => {
-  selectedTags.clear();
-  renderTagBar();
-  renderGallery();
-});
-
-$("#clearExcludeBtn").addEventListener("click", () => {
-  excludedTags.clear();
-  renderTagBar();
-  renderGallery();
-});
-
-$("#gallery").addEventListener("click", async (e) => {
-  const xBtn = e.target.closest(".tag-x");
-  if (xBtn) { removeTag(Number(xBtn.dataset.id), xBtn.dataset.tag); return; }
-  const addBtn = e.target.closest(".tag-add");
-  if (addBtn) { beginAddTag(Number(addBtn.dataset.id)); return; }
-
-  const btn = e.target.closest("button[data-act]");
-  if (!btn) return;
-  const id = Number(btn.dataset.id);
-  const act = btn.dataset.act;
-  try {
-    if (act === "display") {
-      await api("/api/images/" + id + "/display", { method: "POST" });
-      setStatus("Frame is now showing that image", "ok");
-    } else if (act === "select") {
-      if (selected.has(id)) selected.delete(id); else selected.add(id);
-      renderGallery();
-      updateBar();
-    } else if (act === "delete") {
-      if (!confirm("Delete this image?")) return;
-      await api("/api/images/" + id, { method: "DELETE" });
-      selected.delete(id);
-      updateBar();
-      setStatus("Deleted", "ok");
-      await loadImages();
-    }
-  } catch (err) {
-    setStatus("Error: " + err.message, "error");
-  }
-});
 
 $("#gallery").addEventListener("dragstart", (e) => {
   const card = e.target.closest(".card");
@@ -1210,60 +1362,170 @@ $("#gallery").addEventListener("dragend", () => {
   draggedCard.classList.remove("dragging");
   draggedCard = null;
   if (!orderDirty) return;
-  const visibleIds = [...$("#gallery").querySelectorAll(".card")]
-    .map((card) => Number(card.dataset.id));
-  saveOrder(visibleIds);
+  saveOrder([...document.querySelectorAll(".card")].map((card) => Number(card.dataset.id)));
 });
 
-$("#clearSelBtn").addEventListener("click", () => {
-  selected.clear();
-  renderGallery();
-  updateBar();
+// ------------------------------------------------------ drawer controls
+
+$("#settingsBtn").addEventListener("click", () => setDrawer(true));
+$("#closeDrawerBtn").addEventListener("click", () => setDrawer(false));
+$("#scrim").addEventListener("click", () => setDrawer(false));
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || e.target.closest("input, select")) return;
+  if (!$("#drawer").hidden) setDrawer(false);
+  else if (selected.size) selectOnly([]);
 });
 
-$("#combineBtn").addEventListener("click", async () => {
-  const ids = [...selected];
-  if (ids.length < 1) return setStatus("Select at least one image", "error");
-  if (ids.length > 12) return setStatus("Select at most 12 images", "error");
+async function saveToggle(input, path, key, onText, offText) {
+  const value = input.checked;
   try {
-    await api("/api/edit/combine", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image_ids: ids }),
-    });
-    selected.clear();
-    updateBar();
-    setStatus("Created portrait composite", "ok");
+    await sendJson(path, "PUT", { [key]: value });
+    toast(value ? onText : offText, "ok");
+  } catch (e) {
+    toast("Could not change that: " + e.message, "error");
+    input.checked = !value;
+  }
+}
+$("#showClock").addEventListener("change", (e) =>
+  saveToggle(e.target, "/api/frame/clock", "show_clock", "Clock shown", "Clock hidden"));
+$("#blurBackground").addEventListener("change", (e) =>
+  saveToggle(e.target, "/api/frame/blur", "blur_background",
+    "Blurred background enabled", "Blurred background disabled"));
+
+$("#transitionPanel").addEventListener("change", () => {
+  clearTimeout(transitionSaveTimer);
+  transitionSaveTimer = setTimeout(saveTransitions, 250);
+});
+
+$("#uploadTags").addEventListener("change", saveUploadTags);
+$("#uploadTags").addEventListener("keydown", (e) => { if (e.key === "Enter") e.target.blur(); });
+
+$("#tagManager").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-tagact]");
+  if (!btn) return;
+  const name = btn.closest(".tag-row").dataset.tag;
+  try {
+    if (btn.dataset.tagact === "rename") {
+      const next = prompt("Rename tag “" + name + "” to:", name);
+      if (next === null || !parseTags(next).length || parseTags(next)[0] === name) return;
+      const data = await sendJson("/api/tags/rename", "POST", { name: name, new_name: next });
+      // Keep the filter on this page pointing at the renamed tag.
+      for (const set of [includeTags, excludeTags]) {
+        if (set.delete(name)) set.add(data.name);
+      }
+      toast(data.merged ? "Merged “" + name + "” into “" + data.name + "”"
+        : "Renamed “" + name + "” to “" + data.name + "”", "ok");
+    } else {
+      if (!confirm("Remove the tag “" + name + "” from all photos? The photos are kept.")) return;
+      await sendJson("/api/tags/delete", "POST", { name: name });
+      toast("Tag “" + name + "” deleted", "ok");
+    }
     await loadImages();
+    await syncVersion();
+    await refreshStatus();
   } catch (err) {
-    setStatus("Combine failed: " + err.message, "error");
+    toast(err.message, "error");
   }
 });
 
-$("#fitBtn").addEventListener("click", async () => {
-  if (selected.size !== 1) return setStatus("Select exactly one image to fit", "error");
-  const id = [...selected][0];
+$("#apkInput").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append("apk", file);
+  toast("Uploading update…", "busy");
   try {
-    await api("/api/edit/fit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image_id: id }),
-    });
-    selected.clear();
-    updateBar();
-    setStatus("Created portrait fit", "ok");
-    await loadImages();
+    const data = await api("/api/update", { method: "POST", body: fd });
+    renderUpdateInfo(data.update);
+    toast("Update pushed — approve the install on the frame", "ok");
   } catch (err) {
-    setStatus("Fit failed: " + err.message, "error");
+    toast("Update push failed: " + err.message, "error");
+  }
+  e.target.value = "";
+});
+
+$("#cancelUpdateBtn").addEventListener("click", async () => {
+  if (!confirm("Cancel the pending update?")) return;
+  try {
+    const data = await api("/api/update/cancel", { method: "POST" });
+    renderUpdateInfo(data.update);
+    toast("Update canceled", "ok");
+  } catch (err) {
+    toast("Cancel failed: " + err.message, "error");
   }
 });
+
+async function setGithubToken(token) {
+  const data = await sendJson("/api/github/token", "POST", { token: token });
+  $("#githubToken").value = "";
+  setGithubConfigured(!!data.configured, data.repo);
+}
+
+$("#saveGithubTokenBtn").addEventListener("click", async () => {
+  const token = $("#githubToken").value.trim();
+  if (!token) { toast("Enter a GitHub token first", "error"); return; }
+  try {
+    await setGithubToken(token);
+    toast("GitHub token saved", "ok");
+  } catch (e) {
+    toast("Could not save the GitHub token: " + e.message, "error");
+  }
+});
+
+$("#clearGithubTokenBtn").addEventListener("click", async () => {
+  if (!confirm("Clear the stored GitHub token?")) return;
+  try {
+    await setGithubToken("");
+    toast("GitHub token cleared", "ok");
+  } catch (e) {
+    toast("Could not clear the GitHub token: " + e.message, "error");
+  }
+});
+
+$("#downloadGithubBtn").addEventListener("click", async () => {
+  $("#downloadGithubBtn").disabled = true;
+  toast("Downloading the latest GitHub build…", "busy");
+  try {
+    const data = await api("/api/github/download", { method: "POST" });
+    renderUpdateInfo(data.update);
+    toast("Queued " + ((data.update && data.update.name) || "update") + " — the frame will install it", "ok");
+  } catch (e) {
+    toast("GitHub download failed: " + e.message, "error");
+  } finally {
+    $("#downloadGithubBtn").disabled = !githubConfigured;
+  }
+});
+
+$("#restartServerBtn").addEventListener("click", restartServer);
+
+$("#restartFrameBtn").addEventListener("click", async () => {
+  if (!confirm("Restart the frame app now?")) return;
+  try {
+    await api("/api/frame/restart", { method: "POST" });
+    toast(frameOnline ? "Frame restart requested" : "Frame is offline; restart queued", "ok");
+  } catch (e) {
+    toast("Could not restart the frame: " + e.message, "error");
+  }
+});
+
+$("#bluetoothSection").addEventListener("toggle", (e) => {
+  clearInterval(btInterval);
+  btInterval = null;
+  if (!e.target.open) return;
+  loadBluetooth();
+  btInterval = setInterval(() => {
+    const active = document.activeElement;
+    const typing = active && active.closest && active.closest("#btList");
+    if (!$("#drawer").hidden && !typing) loadBluetooth();
+  }, 15000);
+});
+$("#btRefreshBtn").addEventListener("click", loadBluetooth);
 
 (async () => {
-  renderTransitionPanel();
-  updateFrameStatus();
+  renderTransitionPanel(new Set());
   await loadImages();
   await loadFrameState();
-  setInterval(refreshShown, 5000);
+  setInterval(refreshStatus, 5000);
 })();
 </script>
 </body>

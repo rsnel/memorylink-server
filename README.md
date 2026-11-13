@@ -17,45 +17,63 @@ Apache TLS reverse proxy, see [`deploy/README.md`](deploy/README.md).
 
 ## Web UI
 
-- **Upload images** — multi-select, accepts common formats (JPEG/PNG/WebP/GIF/BMP).
-- **Show on frame** — pins that image on the frame immediately.
-- **Start slideshow** — cycles the frame through the chosen images at the chosen interval.
+The page has three parts: a header with the slideshow controls and the tag
+filter, the photo gallery, and a **Settings** panel for everything that is set
+once and left alone.
+
+**Photos**
+
+- **Upload photos** — multi-select or drop files anywhere on the page; accepts
+  common formats (JPEG/PNG/WebP/GIF/BMP). The new photos are selected right
+  after the upload so they can be tagged in one go. Files that are not images
+  are skipped and named in the message.
+- **Selecting** — click a photo to select it, Shift-click for a range, or use
+  *Select all* / *Select untagged*. Esc deselects. A bar at the bottom then
+  offers the actions for the selection:
+  - **Add tag** — add one or more tags (comma separated) to every selected photo.
+  - **Remove tag…** — take a tag off every selected photo.
+  - **Combine into portrait** — stacks the selected photos (typically 3
+    landscape shots, in gallery order) into one 1080×1920 portrait.
+  - **Crop to portrait** — cover-crops a single photo to 1080×1920.
+  - **Delete** — deletes all selected photos.
+- **Tags on one photo** — `+ tag` on a card adds tags, `×` removes one. Tag
+  names are normalised to lowercase.
+- **Show on frame** — pins that photo on the frame immediately.
 - **Order** — drag photos in the gallery to set the slideshow order. New uploads
   are appended at the end. With a tag filter active, dragging only rearranges the
   visible photos and leaves the hidden ones in place.
-- **Random order** — tick the checkbox before starting the slideshow to ignore
-  the gallery order and pick each image at random. Untick it to follow the
-  gallery order exactly.
-- **Transitions** — open the transition list and tick the effects the frame may
-  use (dissolve, slides, zooms). With none ticked, all transitions are used.
-- **Clock** — show a time/date overlay in the corner of the frame.
-- **Blurred background** — fill the letterbox area around photos whose aspect
-  ratio does not match the frame with a dark, blurred copy of the photo.
-- **Bluetooth** — lists nearby BLE devices reported by the frame; each device
-  has an owner/comment field. The frame scans for 10 seconds every 2 minutes
-  while it is running.
-- **GitHub** — store a GitHub token, then download and queue the latest
-  release APK artifact from GitHub Actions.
-- **Restart frame** — in the GitHub panel, asks the frame app to restart itself
-  (settings and image cache are preserved).
-- **Tags** — add tags to any image (`+ tag` on a card). Tag names are normalised
-  to lowercase.
-- **Slideshow tag filter** — pick one or more tags in the bar under the header
-  to restrict the slideshow. *Match all (AND)* requires every selected tag;
-  *Match any (OR)* requires at least one. Then press **Start slideshow**.
-- **Exclude tags** — the second tag row hides every photo carrying any of the
-  selected tags; exclusion always wins over the include filter.
-- **Delete** — removes an image.
-- **Push update APK** — uploads a signed APK and queues it for the frame. The
-  frame checks for it, verifies the SHA-256, and opens the Android package
-  installer. The site shows pending/installing/installed/failed status and
-  offers **Cancel update** while the install can still be withdrawn. Pushing a
-  new APK does not restart the slideshow.
-- **Edit → Combine → portrait 1080×1920** — select images (typically 3 landscape
-  shots) and the server stacks them into one 1080×1920 portrait composite.
-- **Edit → Fit one → portrait** — cover-crops a single image to 1080×1920.
 
-Edited images are saved as new library images, so they can be shown, deleted,
+**Slideshow and filter**
+
+- **Filter** — click a tag to show only photos with that tag, click it again to
+  hide photos with that tag, and a third time to stop filtering on it. With
+  several tags included, choose whether a photo needs all of them or any of
+  them. Hiding always wins.
+- **Start slideshow** — sends the filter, the interval and *Random order* to
+  the frame. The text next to the button tells what the frame is playing, and
+  turns yellow when the page shows something else than the frame was told.
+
+**Settings**
+
+- **Display** — clock/date overlay, blurred background for photos that do not
+  fill the screen, and the transition effects the frame may use (none ticked =
+  all of them).
+- **New uploads** — tags that every uploaded photo gets automatically, for
+  example `new, {year}`. `{year}`, `{month}` and `{date}` are replaced by the
+  upload date (`2026`, `2026-11`, `2026-11-13`).
+- **Tags** — rename a tag everywhere (renaming onto an existing tag merges the
+  two) or remove it from all photos. A running slideshow filter follows along.
+- **Frame software** — push a signed APK to the frame, or store a GitHub token
+  and download and queue the latest release APK artifact from GitHub Actions.
+  The panel shows pending/installing/installed/failed status and offers
+  **Cancel update** while the install can still be withdrawn. **Restart frame**
+  asks the frame app to restart itself (settings and image cache are preserved).
+- **Nearby Bluetooth devices** — BLE devices reported by the frame; each has an
+  owner/comment field. The frame scans for 10 seconds every 2 minutes while it
+  is running.
+
+Edited images are saved as new library images (carrying the tags their sources
+have in common), so they can be shown, deleted,
 and combined again like any other.
 
 ## API
@@ -65,11 +83,17 @@ and combined again like any other.
 | GET | `/api/health` | liveness check |
 | POST | `/api/server/restart` | re-exec the running uvicorn process |
 | GET | `/api/images` | list images in gallery order (each carries its `tags`) |
-| POST | `/api/images` | upload (multipart, field `files`, multiple allowed) |
+| POST | `/api/images` | upload (multipart, field `files`, multiple allowed; optional field `tags`, comma separated). New images also get the configured upload tags |
 | PUT | `/api/images/order` | `{image_ids: []}` → set gallery order (every image exactly once) |
 | DELETE | `/api/images/{id}` | delete an image |
+| POST | `/api/images/delete` | `{image_ids: []}` → delete several images |
 | GET | `/api/tags` | list all tags with counts |
 | PUT | `/api/images/{id}/tags` | `{tags: []}` → replace an image's tags |
+| POST | `/api/images/tags` | `{image_ids: [], add: [], remove: []}` → add/remove tags on a group of images |
+| POST | `/api/tags/rename` | `{name, new_name}` → rename a tag everywhere (merges if `new_name` exists) |
+| POST | `/api/tags/delete` | `{name}` → remove a tag from every image |
+| GET | `/api/settings` | `{upload_tags, upload_tags_now}` — the configured upload tags and what they expand to today |
+| PUT | `/api/settings/upload-tags` | `{tags: []}` → tags for every new upload; `{year}`, `{month}`, `{date}` are filled in |
 | POST | `/api/bluetooth` | `{devices: [{address, name, rssi}]}` → upsert devices seen by the frame |
 | GET | `/api/bluetooth` | list known Bluetooth devices and comments |
 | PUT | `/api/bluetooth/{address}/comment` | `{comment}` → set owner/comment for a device |
@@ -87,7 +111,7 @@ and combined again like any other.
 | POST | `/api/frame/slideshow` | `{interval_seconds, tags, exclude_tags, match_all, random}` → filtered slideshow |
 | GET | `/api/frame/current` | what the frame should show now (`images`, `filter`, `random`, `transitions`, `blur_background`, `shown_image_id`, `online`, `version_info`) |
 | GET | `/api/frame/wait` | long poll; returns the new state when the frame version, update, clock, or blur setting changes (204 on timeout) |
-| GET | `/api/frame/status` | `{mode, shown_image_id, shown_at, last_seen_at, online, update, version_info}` |
+| GET | `/api/frame/status` | `{mode, version, current_image_id, interval_seconds, filter, random, shown_image_id, shown_at, last_seen_at, online, update, version_info}` |
 | PUT | `/api/frame/transitions` | `{transitions: []}` → choose allowed effects (`[]` = all) |
 | PUT | `/api/frame/clock` | `{show_clock: bool}` → show/hide the time overlay |
 | PUT | `/api/frame/blur` | `{blur_background: bool}` → fill letterboxing with a blurred copy |
@@ -125,7 +149,7 @@ offline** and hides the “On frame” marker when no heartbeat has arrived for 
 seconds. Older app builds don't send heartbeats or use the long poll and will
 therefore appear offline.
 
-The GitHub panel's **Restart frame** button increments `restart_id`; the long
+The Frame software settings's **Restart frame** button increments `restart_id`; the long
 poll returns immediately, the app persists the handled id, and recreates its
 activity. The splash, frame loop and Bluetooth scanner are restarted without
 losing the server URL or cached photos.
@@ -146,7 +170,7 @@ it detects drift:
   process, while `VERSION` is the deployment marker on disk. Bump both whenever
   you change the server code. If the file is newer than the running constant,
   the page recommends restarting the server.
-- **Restarting** — the recommendation (and the GitHub panel) has a **Restart
+- **Restarting** — the recommendation (and the Frame software settings) has a **Restart
   server** button that calls `POST /api/server/restart`. The server responds,
   then re-execs uvicorn with its original command line and environment.
   This assumes a simple single-process uvicorn command; the first deployment

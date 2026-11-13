@@ -33,7 +33,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, Response, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps
@@ -63,10 +63,11 @@ MAX_GITHUB_DOWNLOAD_BYTES = MAX_APK_BYTES + 20 * 1024 * 1024
 GITHUB_REPO = os.getenv("MEMORYLINK_GITHUB_REPO", "rsnel/memorylink-app")
 # The frame polls every ~6 s; allow a few missed polls before calling it offline.
 ONLINE_TIMEOUT_SECONDS = 20
+MAX_TAG_LENGTH = 40
 
 # Bump this together with the VERSION file when the server code changes. If the
 # file is newer than this constant, the running process is out of date.
-SERVER_VERSION = 10
+SERVER_VERSION = 11
 VERSION_PATH = BASE_DIR / "VERSION"
 
 # Must match the Transition enum names in the Android app.
@@ -127,6 +128,14 @@ def init_db() -> None:
                 image_id INTEGER NOT NULL REFERENCES images(id) ON DELETE CASCADE,
                 tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
                 PRIMARY KEY (image_id, tag_id)
+            )
+            """
+        )
+        db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
             )
             """
         )
@@ -262,7 +271,19 @@ def bump_version(db) -> None:
 
 
 def normalize_tag(name: str) -> str:
-    return " ".join(name.strip().lower().split())
+    return " ".join(name.strip().lower().split())[:MAX_TAG_LENGTH].strip()
+
+
+def clean_tags(raw: list[str]) -> list[str]:
+    """Normalise a list of tag names, dropping blanks and duplicates."""
+    cleaned: list[str] = []
+    for item in raw:
+        # Accept "a, b; c" in a single entry as well as separate entries.
+        for part in re.split(r"[,;]", item):
+            name = normalize_tag(part)
+            if name and name not in cleaned:
+                cleaned.append(name)
+    return cleaned
 
 
 def image_tags(db, image_id: int) -> list[str]:
@@ -274,27 +295,115 @@ def image_tags(db, image_id: int) -> list[str]:
     return [r["name"] for r in rows]
 
 
-def set_image_tags(db, image_id: int, tags: list[str]) -> list[str]:
-    """Replace the image's tags and drop any tags that become unused."""
-    db.execute("DELETE FROM image_tags WHERE image_id = ?", (image_id,))
-    cleaned: list[str] = []
-    for raw in tags:
-        name = normalize_tag(raw)
-        if not name or name in cleaned:
-            continue
-        row = db.execute("SELECT id FROM tags WHERE name = ?", (name,)).fetchone()
-        if row is None:
-            cur = db.execute("INSERT INTO tags (name) VALUES (?)", (name,))
-            tag_id = cur.lastrowid
-        else:
-            tag_id = row["id"]
+def tags_by_image(db) -> dict[int, list[str]]:
+    """Tags of every image, in one query."""
+    result: dict[int, list[str]] = {}
+    rows = db.execute(
+        "SELECT it.image_id, t.name FROM image_tags it "
+        "JOIN tags t ON t.id = it.tag_id ORDER BY t.name"
+    ).fetchall()
+    for r in rows:
+        result.setdefault(r["image_id"], []).append(r["name"])
+    return result
+
+
+def tag_id(db, name: str, create: bool = False) -> int | None:
+    row = db.execute("SELECT id FROM tags WHERE name = ?", (name,)).fetchone()
+    if row is not None:
+        return row["id"]
+    if not create:
+        return None
+    return db.execute("INSERT INTO tags (name) VALUES (?)", (name,)).lastrowid
+
+
+def drop_unused_tags(db) -> None:
+    db.execute("DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM image_tags)")
+
+
+def add_image_tags(db, image_id: int, tags: list[str]) -> None:
+    """Add already-normalised tags to an image, keeping the ones it has."""
+    for name in tags:
         db.execute(
             "INSERT OR IGNORE INTO image_tags (image_id, tag_id) VALUES (?, ?)",
-            (image_id, tag_id),
+            (image_id, tag_id(db, name, create=True)),
         )
-        cleaned.append(name)
-    db.execute("DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM image_tags)")
+
+
+def remove_image_tags(db, image_id: int, tags: list[str]) -> None:
+    for name in tags:
+        tid = tag_id(db, name)
+        if tid is not None:
+            db.execute(
+                "DELETE FROM image_tags WHERE image_id = ? AND tag_id = ?",
+                (image_id, tid),
+            )
+
+
+def set_image_tags(db, image_id: int, tags: list[str]) -> list[str]:
+    """Replace the image's tags and drop any tags that become unused."""
+    cleaned = clean_tags(tags)
+    db.execute("DELETE FROM image_tags WHERE image_id = ?", (image_id,))
+    add_image_tags(db, image_id, cleaned)
+    drop_unused_tags(db)
     return cleaned
+
+
+def get_setting(db, key: str, default: str) -> str:
+    row = db.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row is not None else default
+
+
+def put_setting(db, key: str, value: str) -> None:
+    db.execute(
+        "INSERT INTO settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (key, value),
+    )
+
+
+def upload_tag_templates(db) -> list[str]:
+    """Tags given to every newly uploaded image, as configured (unexpanded)."""
+    try:
+        value = json.loads(get_setting(db, "upload_tags", "[]"))
+    except ValueError:
+        return []
+    return [t for t in value if isinstance(t, str)] if isinstance(value, list) else []
+
+
+def expand_upload_tags(templates: list[str], when: datetime | None = None) -> list[str]:
+    """Fill in the date placeholders: {year}, {month} (2026-11) and {date}."""
+    when = when or datetime.now()
+    values = {
+        "{year}": when.strftime("%Y"),
+        "{month}": when.strftime("%Y-%m"),
+        "{date}": when.strftime("%Y-%m-%d"),
+    }
+    expanded = []
+    for template in templates:
+        for key, value in values.items():
+            template = template.replace(key, value)
+        expanded.append(template)
+    return clean_tags(expanded)
+
+
+def rename_in_filters(db, old: str, new: str | None) -> None:
+    """Keep the slideshow's tag filters in step with a renamed or deleted tag."""
+    state = db.execute(
+        "SELECT tag_filter, exclude_tags FROM frame_state WHERE id = ?", (FRAME_ID,)
+    ).fetchone()
+    updated = {}
+    for column in ("tag_filter", "exclude_tags"):
+        names = json.loads(state[column] or "[]")
+        if old not in names:
+            continue
+        replaced: list[str] = []
+        for name in names:
+            name = new if name == old else name
+            if name and name not in replaced:
+                replaced.append(name)
+        updated[column] = json.dumps(replaced)
+    for column, value in updated.items():
+        db.execute(f"UPDATE frame_state SET {column} = ? WHERE id = ?", (value, FRAME_ID))
 
 
 def all_tags(db) -> list[dict]:
@@ -406,9 +515,10 @@ def list_images(
     rows = db.execute(
         "SELECT * FROM images ORDER BY position IS NULL, position, id DESC"
     ).fetchall()
+    tag_map = tags_by_image(db)
     result = []
     for row in rows:
-        tags = image_tags(db, row["id"])
+        tags = tag_map.get(row["id"], [])
         if tag_filter:
             if match_all:
                 if not all(t in tags for t in tag_filter):
@@ -421,7 +531,13 @@ def list_images(
     return result
 
 
-def insert_image(filename: str, original_name: str, width: int, height: int) -> dict:
+def insert_image(
+    filename: str,
+    original_name: str,
+    width: int,
+    height: int,
+    tags: list[str] | None = None,
+) -> dict:
     with db_conn() as db:
         position = db.execute("SELECT COALESCE(MAX(position), -1) + 1 FROM images").fetchone()[0]
         cur = db.execute(
@@ -429,6 +545,8 @@ def insert_image(filename: str, original_name: str, width: int, height: int) -> 
             "VALUES (?, ?, ?, ?, ?, ?)",
             (filename, original_name, width, height, position, now()),
         )
+        if tags:
+            add_image_tags(db, cur.lastrowid, tags)
         bump_version(db)
         row = db.execute("SELECT * FROM images WHERE id = ?", (cur.lastrowid,)).fetchone()
         return image_dict(db, row)
@@ -528,13 +646,15 @@ def normalize_and_save(data: bytes) -> tuple[str, int, int]:
     return filename, width, height
 
 
-def save_generated(img: Image.Image, original_name: str) -> dict:
+def save_generated(
+    img: Image.Image, original_name: str, tags: list[str] | None = None
+) -> dict:
     filename = uuid.uuid4().hex + ".jpg"
     img.save(DATA_DIR / filename, "JPEG", quality=92, optimize=True)
     thumb = img.copy()
     thumb.thumbnail((400, 400))
     thumb.convert("RGB").save(THUMBS_DIR / filename, "JPEG", quality=85)
-    return insert_image(filename, original_name, img.width, img.height)
+    return insert_image(filename, original_name, img.width, img.height, tags)
 
 
 # --------------------------------------------------------------------------
@@ -719,17 +839,39 @@ def api_set_tags(image_id: int, req: SetTagsRequest):
 
 
 @app.post("/api/images")
-async def api_upload(files: list[UploadFile] = File(...)):
+async def api_upload(
+    files: list[UploadFile] = File(...),
+    tags: str | None = Form(None),
+):
+    """Store uploaded images.
+
+    Every new image gets the configured upload tags, plus any given in the
+    optional comma-separated `tags` form field. Unreadable files are skipped
+    and reported, so one bad file does not sink the whole batch.
+    """
+    with db_conn() as db:
+        new_tags = expand_upload_tags(upload_tag_templates(db))
+    for name in clean_tags([tags or ""]):
+        if name not in new_tags:
+            new_tags.append(name)
+
     saved = []
+    skipped = []
     for uf in files:
         data = await uf.read()
         if not data:
             continue
-        filename, width, height = normalize_and_save(data)
-        saved.append(insert_image(filename, uf.filename or filename, width, height))
+        try:
+            filename, width, height = normalize_and_save(data)
+        except HTTPException:
+            skipped.append(uf.filename or "unnamed file")
+            continue
+        saved.append(
+            insert_image(filename, uf.filename or filename, width, height, new_tags)
+        )
     if not saved:
         raise HTTPException(status_code=400, detail="No readable images uploaded")
-    return {"ok": True, "images": saved}
+    return {"ok": True, "images": saved, "tags": new_tags, "skipped": skipped}
 
 
 @app.get("/api/update")
@@ -1000,32 +1142,171 @@ def api_cancel_update():
     return {"ok": True, "update": update}
 
 
+def delete_images(ids: list[int]) -> int:
+    """Delete images and their files; unknown ids are ignored."""
+    filenames = []
+    with db_conn() as db:
+        for image_id in ids:
+            row = db.execute("SELECT * FROM images WHERE id = ?", (image_id,)).fetchone()
+            if row is None:
+                continue
+            db.execute("DELETE FROM image_tags WHERE image_id = ?", (image_id,))
+            db.execute("DELETE FROM images WHERE id = ?", (image_id,))
+            db.execute(
+                "UPDATE frame_state SET current_image_id = NULL, mode = 'slideshow' "
+                "WHERE id = ? AND current_image_id = ?",
+                (FRAME_ID, image_id),
+            )
+            db.execute(
+                "UPDATE frame_state SET shown_image_id = NULL, shown_at = NULL "
+                "WHERE id = ? AND shown_image_id = ?",
+                (FRAME_ID, image_id),
+            )
+            filenames.append(row["filename"])
+        if filenames:
+            drop_unused_tags(db)
+            bump_version(db)
+
+    for filename in filenames:
+        for path in (DATA_DIR / filename, THUMBS_DIR / filename, SCALED_DIR / filename):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+    return len(filenames)
+
+
 @app.delete("/api/images/{image_id}")
 def api_delete(image_id: int):
-    with db_conn() as db:
-        row = db.execute("SELECT * FROM images WHERE id = ?", (image_id,)).fetchone()
-        if row is None:
-            raise HTTPException(status_code=404, detail="Image not found")
-        db.execute("DELETE FROM images WHERE id = ?", (image_id,))
-        db.execute(
-            "UPDATE frame_state SET current_image_id = NULL, mode = 'slideshow' "
-            "WHERE id = ? AND current_image_id = ?",
-            (FRAME_ID, image_id),
-        )
-        db.execute(
-            "UPDATE frame_state SET shown_image_id = NULL, shown_at = NULL "
-            "WHERE id = ? AND shown_image_id = ?",
-            (FRAME_ID, image_id),
-        )
-        bump_version(db)
-        filename = row["filename"]
-
-    for path in (DATA_DIR / filename, THUMBS_DIR / filename, SCALED_DIR / filename):
-        try:
-            path.unlink(missing_ok=True)
-        except OSError:
-            pass
+    if not delete_images([image_id]):
+        raise HTTPException(status_code=404, detail="Image not found")
     return {"ok": True}
+
+
+class BulkDeleteRequest(BaseModel):
+    image_ids: list[int]
+
+
+@app.post("/api/images/delete")
+def api_bulk_delete(req: BulkDeleteRequest):
+    """Delete several images at once."""
+    return {"ok": True, "deleted": delete_images(list(dict.fromkeys(req.image_ids)))}
+
+
+class BulkTagRequest(BaseModel):
+    image_ids: list[int]
+    add: list[str] = []
+    remove: list[str] = []
+
+
+@app.post("/api/images/tags")
+def api_bulk_tags(req: BulkTagRequest):
+    """Add tags to, and/or remove tags from, a group of images."""
+    add = clean_tags(req.add)
+    remove = clean_tags(req.remove)
+    if not add and not remove:
+        raise HTTPException(status_code=400, detail="No tags given")
+    ids = list(dict.fromkeys(req.image_ids))
+    if not ids:
+        raise HTTPException(status_code=400, detail="No images selected")
+    with db_conn() as db:
+        existing = {r["id"] for r in db.execute("SELECT id FROM images").fetchall()}
+        ids = [i for i in ids if i in existing]
+        if not ids:
+            raise HTTPException(status_code=404, detail="Images not found")
+        for image_id in ids:
+            remove_image_tags(db, image_id, remove)
+            add_image_tags(db, image_id, add)
+        drop_unused_tags(db)
+        bump_version(db)
+        tag_map = tags_by_image(db)
+    return {
+        "ok": True,
+        "added": add,
+        "removed": remove,
+        "images": {str(i): tag_map.get(i, []) for i in ids},
+    }
+
+
+class RenameTagRequest(BaseModel):
+    name: str
+    new_name: str
+
+
+@app.post("/api/tags/rename")
+def api_rename_tag(req: RenameTagRequest):
+    """Rename a tag everywhere. Renaming onto an existing tag merges the two."""
+    old = normalize_tag(req.name)
+    new = normalize_tag(req.new_name)
+    if not new:
+        raise HTTPException(status_code=400, detail="New tag name is empty")
+    with db_conn() as db:
+        old_id = tag_id(db, old)
+        if old_id is None:
+            raise HTTPException(status_code=404, detail="Tag not found")
+        merged = False
+        if new != old:
+            new_id = tag_id(db, new)
+            if new_id is None:
+                db.execute("UPDATE tags SET name = ? WHERE id = ?", (new, old_id))
+            else:
+                merged = True
+                db.execute(
+                    "INSERT OR IGNORE INTO image_tags (image_id, tag_id) "
+                    "SELECT image_id, ? FROM image_tags WHERE tag_id = ?",
+                    (new_id, old_id),
+                )
+                db.execute("DELETE FROM image_tags WHERE tag_id = ?", (old_id,))
+                db.execute("DELETE FROM tags WHERE id = ?", (old_id,))
+            rename_in_filters(db, old, new)
+            bump_version(db)
+    return {"ok": True, "name": new, "merged": merged}
+
+
+class DeleteTagRequest(BaseModel):
+    name: str
+
+
+@app.post("/api/tags/delete")
+def api_delete_tag(req: DeleteTagRequest):
+    """Remove a tag from every image. The images themselves are kept."""
+    name = normalize_tag(req.name)
+    with db_conn() as db:
+        tid = tag_id(db, name)
+        if tid is None:
+            raise HTTPException(status_code=404, detail="Tag not found")
+        db.execute("DELETE FROM image_tags WHERE tag_id = ?", (tid,))
+        db.execute("DELETE FROM tags WHERE id = ?", (tid,))
+        rename_in_filters(db, name, None)
+        bump_version(db)
+    return {"ok": True}
+
+
+def upload_tags_dict(db) -> dict:
+    templates = upload_tag_templates(db)
+    return {"upload_tags": templates, "upload_tags_now": expand_upload_tags(templates)}
+
+
+@app.get("/api/settings")
+def api_get_settings():
+    with db_conn() as db:
+        return upload_tags_dict(db)
+
+
+class UploadTagsRequest(BaseModel):
+    tags: list[str]
+
+
+@app.put("/api/settings/upload-tags")
+def api_set_upload_tags(req: UploadTagsRequest):
+    """Choose the tags every newly uploaded image gets (empty = none).
+
+    {year}, {month} and {date} are replaced by the upload date.
+    """
+    templates = clean_tags(req.tags)
+    with db_conn() as db:
+        put_setting(db, "upload_tags", json.dumps(templates))
+        return {"ok": True, **upload_tags_dict(db)}
 
 
 @app.post("/api/images/{image_id}/display")
@@ -1053,16 +1334,8 @@ class SlideshowRequest(BaseModel):
 @app.post("/api/frame/slideshow")
 def api_slideshow(req: SlideshowRequest):
     interval = max(5, min(3600, req.interval_seconds))
-    tags: list[str] = []
-    for t in req.tags:
-        name = normalize_tag(t)
-        if name and name not in tags:
-            tags.append(name)
-    excludes: list[str] = []
-    for t in req.exclude_tags:
-        name = normalize_tag(t)
-        if name and name not in excludes:
-            excludes.append(name)
+    tags = clean_tags(req.tags)
+    excludes = clean_tags(req.exclude_tags)
     with db_conn() as db:
         db.execute(
             "UPDATE frame_state SET mode = 'slideshow', interval_seconds = ?, "
@@ -1260,6 +1533,15 @@ def api_frame_status():
         ).fetchone()
     return {
         "mode": state["mode"],
+        "version": state["version"],
+        "current_image_id": state["current_image_id"],
+        "interval_seconds": state["interval_seconds"],
+        "filter": {
+            "tags": json.loads(state["tag_filter"] or "[]"),
+            "exclude_tags": json.loads(state["exclude_tags"] or "[]"),
+            "match_all": bool(state["match_all"]),
+        },
+        "random": bool(state["random"]),
         "shown_image_id": state["shown_image_id"],
         "shown_at": state["shown_at"],
         "last_seen_at": state["last_seen_at"],
@@ -1336,12 +1618,16 @@ def api_combine(req: CombineRequest):
         raise HTTPException(status_code=400, detail="Select between 1 and 12 images")
 
     paths = []
+    tags: list[str] = []
     with db_conn() as db:
         for iid in ids:
             row = db.execute("SELECT * FROM images WHERE id = ?", (iid,)).fetchone()
             if row is None:
                 raise HTTPException(status_code=404, detail=f"Image {iid} not found")
             paths.append(DATA_DIR / row["filename"])
+            # The composite carries the tags all of its parts have in common.
+            own = image_tags(db, iid)
+            tags = own if iid == ids[0] else [t for t in tags if t in own]
 
     cell_h = FRAME_H // len(paths)
     canvas = Image.new("RGB", (FRAME_W, FRAME_H), "black")
@@ -1352,7 +1638,7 @@ def api_combine(req: CombineRequest):
         canvas.paste(cell, (0, y))
         y += cell_h
 
-    return {"ok": True, "image": save_generated(canvas, f"combined-{len(ids)}.jpg")}
+    return {"ok": True, "image": save_generated(canvas, f"combined-{len(ids)}.jpg", tags)}
 
 
 class FitRequest(BaseModel):
@@ -1368,10 +1654,11 @@ def api_fit(req: FitRequest):
             raise HTTPException(status_code=404, detail=f"Image {req.image_id} not found")
         path = DATA_DIR / row["filename"]
         name = row["original_name"]
+        tags = image_tags(db, req.image_id)
 
     img = Image.open(path).convert("RGB")
     out = ImageOps.fit(img, (FRAME_W, FRAME_H), method=Image.LANCZOS, centering=(0.5, 0.5))
-    return {"ok": True, "image": save_generated(out, f"{name}-fit.jpg")}
+    return {"ok": True, "image": save_generated(out, f"{name}-fit.jpg", tags)}
 
 
 init_db()
