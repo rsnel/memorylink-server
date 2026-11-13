@@ -69,7 +69,7 @@ MAX_TAG_LENGTH = 40
 
 # Bump this together with the VERSION file when the server code changes. If the
 # file is newer than this constant, the running process is out of date.
-SERVER_VERSION = 15
+SERVER_VERSION = 16
 VERSION_PATH = BASE_DIR / "VERSION"
 
 # Must match the Transition enum names in the Android app.
@@ -1636,6 +1636,14 @@ def build_frame_state(frame_id: str = FRAME_ID) -> dict:
         match_all = bool(state["match_all"])
         transitions = json.loads(state["transitions"] or "[]")
         images = list_images(db, tag_filter or None, match_all, exclude_tags or None)
+        # The whole library in gallery order, so the frame can browse beyond
+        # the slideshow's selection and keep every photo for offline use.
+        library = [
+            {"id": r["id"], "url": f"/images/{r['filename']}"}
+            for r in db.execute(
+                "SELECT id, filename FROM images ORDER BY position IS NULL, position, id DESC"
+            ).fetchall()
+        ]
 
     mode = state["mode"]
     single = None
@@ -1656,6 +1664,7 @@ def build_frame_state(frame_id: str = FRAME_ID) -> dict:
         "interval_seconds": state["interval_seconds"],
         "image": single,
         "images": images,
+        "library": library,
         "filter": {
             "tags": tag_filter,
             "exclude_tags": exclude_tags,

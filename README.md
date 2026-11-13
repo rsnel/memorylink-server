@@ -128,7 +128,7 @@ and combined again like any other.
 | GET | `/thumbs/{filename}` | thumbnail |
 | POST | `/api/images/{id}/display` | pin an image on the selected frame |
 | POST | `/api/frame/slideshow` | `{interval_seconds, tags, exclude_tags, match_all, random}` → filtered slideshow |
-| GET | `/api/frame/current` | what the selected frame should show now (`frame_id`, `images`, `filter`, `random`, `transitions`, `blur_background`, `shown_image_id`, `online`, `version_info`) |
+| GET | `/api/frame/current` | what the selected frame should show now (`frame_id`, `images`, `library` (every image, `{id, url}` in gallery order, for browsing and offline use), `filter`, `random`, `transitions`, `blur_background`, `shown_image_id`, `online`, `version_info`) |
 | GET | `/api/frame/wait` | long poll; returns the new state when the frame version, update, clock, or blur setting changes (204 on timeout) |
 | GET | `/api/frame/status` | `{frame_id, mode, version, current_image_id, interval_seconds, filter, random, shown_image_id, shown_at, last_seen_at, online, update, version_info}` |
 | PUT | `/api/frame/transitions` | `{transitions: []}` → choose allowed effects (`[]` = all) |
