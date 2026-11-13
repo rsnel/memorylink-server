@@ -69,7 +69,7 @@ MAX_TAG_LENGTH = 40
 
 # Bump this together with the VERSION file when the server code changes. If the
 # file is newer than this constant, the running process is out of date.
-SERVER_VERSION = 13
+SERVER_VERSION = 14
 VERSION_PATH = BASE_DIR / "VERSION"
 
 # Must match the Transition enum names in the Android app.
@@ -267,15 +267,19 @@ def init_db() -> None:
                     "UPDATE images SET position = ? WHERE id = ?",
                     (next_pos + offset, row["id"]),
                 )
-        db.execute(
-            """
-            INSERT OR IGNORE INTO frame_state
-                (id, mode, current_image_id, interval_seconds, version,
-                 tag_filter, match_all, created_at)
-            VALUES (?, 'slideshow', NULL, ?, 0, '[]', 1, ?)
-            """,
-            (FRAME_ID, DEFAULT_INTERVAL, now()),
-        )
+        # Seed the legacy singleton only on an empty database. Once a real
+        # frame has adopted that row, restarts must not recreate a stale
+        # "default" entry.
+        if db.execute("SELECT COUNT(*) FROM frame_state").fetchone()[0] == 0:
+            db.execute(
+                """
+                INSERT INTO frame_state
+                    (id, mode, current_image_id, interval_seconds, version,
+                     tag_filter, match_all, created_at)
+                VALUES (?, 'slideshow', NULL, ?, 0, '[]', 1, ?)
+                """,
+                (FRAME_ID, DEFAULT_INTERVAL, now()),
+            )
 
 
 def normalize_frame_id(value: str | None) -> str:
@@ -970,9 +974,15 @@ def record_update(
 ) -> dict | None:
     """Queue an APK for every known frame (the APK file is shared)."""
     with db_conn() as db:
-        state = ensure_frame(db, frame_id)
-        uploaded = now()
         frames = db.execute("SELECT id, update_id FROM frame_state").fetchall()
+        if not frames:
+            ensure_frame(db, frame_id)
+            frames = db.execute("SELECT id, update_id FROM frame_state").fetchall()
+        # A legacy caller without a frame id should not recreate a "default"
+        # row when real frames exist; return the first frame's status instead.
+        known = {frame["id"] for frame in frames}
+        target_id = frame_id if frame_id in known else frames[0]["id"]
+        uploaded = now()
         for frame in frames:
             update_id = (frame["update_id"] or 0) + 1
             db.execute(
@@ -982,7 +992,7 @@ def record_update(
                 "update_result_at = NULL WHERE id = ?",
                 (update_id, name, sha256, size, uploaded, frame["id"]),
             )
-        state = ensure_frame(db, state["id"])
+        state = ensure_frame(db, target_id)
         return update_dict(state)
 
 
@@ -1599,6 +1609,23 @@ def api_set_frame_name(frame_id: str, req: FrameNameRequest):
         )
         state = ensure_frame(db, state["id"])
     return {"ok": True, "frame": frame_public(state)}
+
+
+@app.delete("/api/frames/{frame_id}")
+def api_delete_frame(frame_id: str, force: bool = False):
+    """Remove an unused frame row. Shared photos and APKs are kept."""
+    fid = normalize_frame_id(frame_id)
+    with db_conn() as db:
+        state = db.execute("SELECT * FROM frame_state WHERE id = ?", (fid,)).fetchone()
+        if state is None:
+            raise HTTPException(status_code=404, detail="Frame not found")
+        if frame_online(state) and not force:
+            raise HTTPException(
+                status_code=409,
+                detail="Frame is online; stop it before removing it",
+            )
+        db.execute("DELETE FROM frame_state WHERE id = ?", (fid,))
+    return {"ok": True, "deleted": fid}
 
 
 def build_frame_state(frame_id: str = FRAME_ID) -> dict:

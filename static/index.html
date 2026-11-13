@@ -321,6 +321,7 @@
     <select id="frameSelect" title="Frame to control"></select>
     <input id="frameName" type="text" maxlength="80" placeholder="Friendly name" autocomplete="off">
     <button id="saveFrameNameBtn" class="small" type="button">Save name</button>
+    <button id="removeFrameBtn" class="small danger" type="button" disabled>Remove frame</button>
     <span id="frameIdHint" class="hint"></span>
   </div>
 
@@ -531,8 +532,11 @@ const sendJson = (path, method, body) => api(path, {
   body: JSON.stringify(body),
 });
 
-const withFrame = (path) => path + (path.includes("?") ? "&" : "?") +
-  "frame_id=" + encodeURIComponent(currentFrameId || "default");
+const withFrame = (path) => {
+  if (!currentFrameId) throw new Error("No frame selected");
+  return path + (path.includes("?") ? "&" : "?") +
+    "frame_id=" + encodeURIComponent(currentFrameId);
+};
 
 function toast(msg, kind = "") {
   const el = $("#toast");
@@ -754,9 +758,13 @@ async function loadFrames() {
     const data = await api("/api/frames");
     frames = data.frames || [];
     if (!frames.length) {
+      const hadSelection = !!currentFrameId || !!frame;
       currentFrameId = null;
       $("#frameSelect").innerHTML = '<option value="">No frames yet</option>';
       $("#frameIdHint").textContent = "";
+      updateRemoveFrameButton();
+      if (hadSelection) await loadFrameState();
+      else updateFrameStatus();
       return;
     }
     let changed = false;
@@ -780,6 +788,7 @@ async function loadFrames() {
         (selectedFrame.short_id || selectedFrame.id);
       $("#frameIdHint").title = selectedFrame.id;
     }
+    updateRemoveFrameButton();
     if (changed && framesInitialized) await loadFrameState();
     framesInitialized = true;
   } catch (e) {
@@ -803,6 +812,7 @@ async function switchFrame(id) {
       (selectedFrame.short_id || selectedFrame.id);
     $("#frameIdHint").title = selectedFrame.id;
   }
+  updateRemoveFrameButton();
   await loadFrameState();
 }
 
@@ -821,12 +831,53 @@ async function saveFrameName() {
   }
 }
 
+function updateRemoveFrameButton() {
+  const button = $("#removeFrameBtn");
+  const selectedFrame = frames.find((f) => f.id === currentFrameId);
+  const online = !!(selectedFrame && (selectedFrame.online || frameOnline));
+  button.disabled = !selectedFrame || online;
+  button.title = !selectedFrame
+    ? "No frame selected"
+    : online ? "Frame is online; stop it before removing it"
+    : "Remove this unused frame";
+}
+
+async function removeFrame() {
+  const selectedFrame = frames.find((f) => f.id === currentFrameId);
+  if (!selectedFrame) return;
+  if (selectedFrame.online || frameOnline) {
+    toast("Frame is online; stop it before removing it", "error");
+    return;
+  }
+  const label = selectedFrame.display_name || selectedFrame.short_id || selectedFrame.id;
+  if (!confirm("Remove frame " + label + "? The shared photos are kept.")) return;
+  try {
+    await api("/api/frames/" + encodeURIComponent(selectedFrame.id), {
+      method: "DELETE",
+    });
+    toast("Frame removed", "ok");
+    currentFrameId = null;
+    storeFrame("");
+    frame = null;
+    stateVersion = null;
+    shownId = null;
+    frameOnline = false;
+    await loadFrames();
+    if (!currentFrameId) await loadFrameState();
+  } catch (e) {
+    toast("Could not remove the frame: " + e.message, "error");
+  }
+}
+
 // --------------------------------------------------------- frame state
 
 function updateFrameStatus() {
   const el = $("#frameStatus");
-  el.textContent = frameOnline ? "Frame online" : "Frame offline";
+  el.textContent = currentFrameId
+    ? (frameOnline ? "Frame online" : "Frame offline")
+    : "No frame";
   el.className = "pill " + (frameOnline ? "online" : "offline");
+  updateRemoveFrameButton();
 }
 
 const sameSet = (set, list) => set.size === list.length && list.every((t) => set.has(t));
@@ -874,6 +925,21 @@ function applyFrameInfo(data) {
 }
 
 async function loadFrameState() {
+  if (!currentFrameId) {
+    frame = null;
+    stateVersion = null;
+    shownId = null;
+    frameOnline = false;
+    $("#frameName").value = "";
+    $("#frameIdHint").textContent = "";
+    $("#versionInfo").textContent = "";
+    renderUpdateInfo(null);
+    $("#recommendations").hidden = true;
+    updateFrameStatus();
+    renderAll();
+    renderSlideshowNote();
+    return;
+  }
   try {
     const data = await api(withFrame("/api/frame/current"));
     applyFrameInfo(data);
@@ -898,6 +964,7 @@ async function loadFrameState() {
 const busyEditing = () => draggedCard || document.querySelector(".tag-input");
 
 async function refreshStatus() {
+  if (!currentFrameId) return;
   let data;
   try { data = await api(withFrame("/api/frame/status")); } catch (e) { return; }
   applyFrameInfo(data);
@@ -910,6 +977,7 @@ async function refreshStatus() {
     updateFrameStatus();
     updateShownBadge(previous, frameOnline ? shownId : null);
   }
+  updateRemoveFrameButton();
   // The library changed somewhere else (another browser, a new upload).
   if (data.version !== undefined && data.version !== stateVersion && !busyEditing()) {
     stateVersion = data.version;
@@ -951,6 +1019,7 @@ async function loadImages(quiet) {
 
 /** Remember the version our own change produced, so it is not seen as foreign. */
 async function syncVersion() {
+  if (!currentFrameId) return;
   try { stateVersion = (await api(withFrame("/api/frame/status"))).version; } catch (e) { /* next poll */ }
 }
 
@@ -963,6 +1032,7 @@ function renderTransitionPanel(enabled) {
 }
 
 async function saveTransitions() {
+  if (!currentFrameId) { toast("No frame selected", "error"); return; }
   const list = [...document.querySelectorAll("input[data-transition]:checked")]
     .map((el) => el.dataset.transition);
   try {
@@ -1233,6 +1303,7 @@ $("#randomOrder").addEventListener("change", renderSlideshowNote);
 
 $("#frameSelect").addEventListener("change", (e) => switchFrame(e.target.value));
 $("#saveFrameNameBtn").addEventListener("click", saveFrameName);
+$("#removeFrameBtn").addEventListener("click", removeFrame);
 $("#frameName").addEventListener("keydown", (e) => {
   if (e.key === "Enter") saveFrameName();
 });
@@ -1504,11 +1575,23 @@ async function saveToggle(input, path, key, onText, offText) {
     input.checked = !value;
   }
 }
-$("#showClock").addEventListener("change", (e) =>
-  saveToggle(e.target, withFrame("/api/frame/clock"), "show_clock", "Clock shown", "Clock hidden"));
-$("#blurBackground").addEventListener("change", (e) =>
+$("#showClock").addEventListener("change", (e) => {
+  if (!currentFrameId) {
+    e.target.checked = !e.target.checked;
+    toast("No frame selected", "error");
+    return;
+  }
+  saveToggle(e.target, withFrame("/api/frame/clock"), "show_clock", "Clock shown", "Clock hidden");
+});
+$("#blurBackground").addEventListener("change", (e) => {
+  if (!currentFrameId) {
+    e.target.checked = !e.target.checked;
+    toast("No frame selected", "error");
+    return;
+  }
   saveToggle(e.target, withFrame("/api/frame/blur"), "blur_background",
-    "Blurred background enabled", "Blurred background disabled"));
+    "Blurred background enabled", "Blurred background disabled");
+});
 
 $("#transitionPanel").addEventListener("change", () => {
   clearTimeout(transitionSaveTimer);

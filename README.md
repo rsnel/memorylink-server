@@ -63,7 +63,8 @@ update status are per frame.
   was told.
 - **Frame picker** — choose which frame the controls apply to. **Save name**
   stores a friendly name for it; an unnamed frame is shown by the first eight
-  characters of its UUID.
+  characters of its UUID. **Remove frame** deletes an offline frame row (the
+  shared photos, tags and APK are kept); online frames must be stopped first.
 
 **Settings**
 
@@ -97,6 +98,7 @@ and combined again like any other.
 | GET | `/api/health` | liveness check |
 | GET | `/api/frames` | list frames (`id`, friendly `name`, `short_id`, `display_name`, `online`) |
 | PUT | `/api/frames/{frame_id}` | `{name}` → set or clear a frame's friendly name |
+| DELETE | `/api/frames/{frame_id}` | remove an offline frame (optional `?force=true` for an online one); photos are kept |
 | POST | `/api/server/restart` | re-exec the running uvicorn process |
 | GET | `/api/images` | list images in gallery order (each carries its `tags`) |
 | POST | `/api/images` | upload (multipart, field `files`, multiple allowed; optional field `tags`, comma separated). New images also get the configured upload tags |
