@@ -367,6 +367,7 @@
 <div class="gallery-head row">
   <h2 id="galleryCount">Photos</h2>
   <button id="selectAllBtn" class="link" type="button">Select all</button>
+  <button id="selectNoneBtn" class="link" type="button" hidden>Select none</button>
   <button id="selectUntaggedBtn" class="link" type="button" hidden>Select untagged</button>
   <button id="turnBtn" class="small" type="button" hidden></button>
   <span class="spacer"></span>
@@ -756,6 +757,7 @@ function renderSelection() {
   const n = selected.size;
   $("#selCount").textContent = n;
   $("#selectionBar").hidden = n === 0;
+  $("#selectNoneBtn").hidden = n === 0;
   document.body.classList.toggle("has-selection", n > 0);
   if (!n) return;
 
@@ -1419,6 +1421,8 @@ $("#clearFilterBtn").addEventListener("click", () => {
   excludeTags.clear();
   renderAll();
 });
+
+$("#selectNoneBtn").addEventListener("click", () => selectOnly([]));
 
 $("#selectAllBtn").addEventListener("click", () => {
   visibleImages().forEach((img) => selected.add(img.id));
