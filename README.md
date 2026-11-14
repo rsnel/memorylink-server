@@ -142,7 +142,7 @@ and combined again like any other.
 | PUT | `/api/frame/orientation` | `{orientation}`: `auto`, `portrait` or `landscape` (locks the frame's screen) |
 | PUT | `/api/frame/display` | `{display_mode}`: `fill`, `fit`, `blur` or `pan` |
 | PUT | `/api/frame/blur` | older form: `{blur_background: bool}` → `blur` or `fit` |
-| POST | `/api/frame/heartbeat` | `?version_code=…&version_name=…` → mark frame alive and report its build |
+| POST | `/api/frame/heartbeat` | `?version_code=…&version_name=…&screen_width=…&screen_height=…` → mark frame alive and report its build and screen size |
 | POST | `/api/frame/restart` | increment the frame restart command id |
 | POST | `/api/frame/shown` | `{image_id}` → record which image the frame is actually displaying |
 | POST | `/api/edit/combine` | `{image_ids: []}` → 1080×1920 stack |
