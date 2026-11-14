@@ -163,7 +163,16 @@
     background: var(--thumb) center / cover no-repeat;
     filter: blur(14px) brightness(.65);
   }
-  .imgwrap img { position: relative; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+  /* Absolutely placed, so the photo can never stretch the card: it is
+     always fitted whole inside the card's (frame-shaped) box. */
+  .imgwrap img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+  }
   body.landscape-frame main { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
   #turnBtn { border-color: var(--warn); color: var(--warn); }
   .mark {
