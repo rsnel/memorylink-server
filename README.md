@@ -65,14 +65,17 @@ update status are per frame.
   playing, and turns yellow when the page shows something else than the frame
   was told.
 - **Frame picker** — next to the title: choose which frame the controls apply
-  to. An unnamed frame is shown by the first eight characters of its UUID.
+  to. The pill shows whether it is online, offline or sleeping, and **☾ Sleep** /
+  **☀ Wake** puts it to sleep (screen off) or wakes it; that holds until the
+  next scheduled switch. An unnamed frame is shown by the first eight characters of its UUID.
 
 **Settings**
 
 - **This frame** — **Save name** stores a friendly name for the selected frame.
   **Remove frame** deletes an offline frame row (the shared photos, tags and
   APK are kept); online frames must be stopped first.
-- **Display** — clock/date overlay; screen orientation (follow the tablet,
+- **Display** — clock/date overlay; **Sleep every night** from/to a time of
+  day (in the frame's own time; touching the frame wakes it); screen orientation (follow the tablet,
   always upright, or always on its side — handy when the frame travels); how photos that don't have the shape of the
   screen are shown (zoomed in to fill, whole with a black border, whole on a
   blurred zoomed border, or zoomed in and slowly panning across); and the
@@ -139,10 +142,12 @@ and combined again like any other.
 | GET | `/api/frame/status` | `{frame_id, mode, version, current_image_id, interval_seconds, filter, random, shown_image_id, shown_at, last_seen_at, online, update, version_info}` |
 | PUT | `/api/frame/transitions` | `{transitions: []}` → choose allowed effects (`[]` = all) |
 | PUT | `/api/frame/clock` | `{show_clock: bool}` → show/hide the time overlay |
+| POST | `/api/frame/sleep` | `{action}`: `sleep` or `wake` (holds until the next scheduled switch) |
+| PUT | `/api/frame/sleep-schedule` | `{sleep_at, wake_at}` as `HH:MM`, both empty = off |
 | PUT | `/api/frame/orientation` | `{orientation}`: `auto`, `portrait` or `landscape` (locks the frame's screen) |
 | PUT | `/api/frame/display` | `{display_mode}`: `fill`, `fit`, `blur` or `pan` |
 | PUT | `/api/frame/blur` | older form: `{blur_background: bool}` → `blur` or `fit` |
-| POST | `/api/frame/heartbeat` | `?version_code=…&version_name=…&screen_width=…&screen_height=…` → mark frame alive and report its build and screen size |
+| POST | `/api/frame/heartbeat` | `?version_code=…&version_name=…&screen_width=…&screen_height=…&asleep=…` → mark frame alive and report its build, screen size and whether it sleeps |
 | POST | `/api/frame/restart` | increment the frame restart command id |
 | POST | `/api/frame/shown` | `{image_id}` → record which image the frame is actually displaying |
 | POST | `/api/edit/combine` | `{image_ids: []}` → 1080×1920 stack |

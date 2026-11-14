@@ -69,7 +69,7 @@ MAX_TAG_LENGTH = 40
 
 # Bump this together with the VERSION file when the server code changes. If the
 # file is newer than this constant, the running process is out of date.
-SERVER_VERSION = 18
+SERVER_VERSION = 19
 VERSION_PATH = BASE_DIR / "VERSION"
 
 # Must match the Transition enum names in the Android app.
@@ -222,6 +222,16 @@ def init_db() -> None:
             db.execute("ALTER TABLE frame_state ADD COLUMN display_mode TEXT NOT NULL DEFAULT ''")
         if "orientation_lock" not in cols:
             db.execute("ALTER TABLE frame_state ADD COLUMN orientation_lock TEXT NOT NULL DEFAULT 'auto'")
+        for column, ddl in (
+            ("sleep_cmd", "TEXT NOT NULL DEFAULT ''"),
+            ("sleep_cmd_id", "INTEGER NOT NULL DEFAULT 0"),
+            ("sleep_cmd_at", "TEXT"),
+            ("sleep_at", "TEXT NOT NULL DEFAULT ''"),
+            ("wake_at", "TEXT NOT NULL DEFAULT ''"),
+            ("frame_asleep", "INTEGER"),
+        ):
+            if column not in cols:
+                db.execute(f"ALTER TABLE frame_state ADD COLUMN {column} {ddl}")
         if "screen_width" not in cols:
             db.execute("ALTER TABLE frame_state ADD COLUMN screen_width INTEGER")
         if "screen_height" not in cols:
@@ -337,6 +347,46 @@ def screen_dict(state) -> dict | None:
     return {"width": state["screen_width"], "height": state["screen_height"]}
 
 
+def sleep_dict(state) -> dict:
+    """What the frame needs to decide whether to sleep.
+
+    The schedule is in the frame's own local time. The last Sleep/Wake
+    command holds until the next scheduled switch; its age (not a clock
+    time) is sent, so the frame does not depend on the server's clock.
+    """
+    keys = state.keys()
+    if "sleep_cmd" not in keys:
+        return {"command": None, "command_id": 0, "command_age_seconds": None, "schedule": None}
+    age = None
+    if state["sleep_cmd"] and state["sleep_cmd_at"]:
+        try:
+            issued = datetime.fromisoformat(state["sleep_cmd_at"])
+            age = max(0, int((datetime.now(timezone.utc) - issued).total_seconds()))
+        except ValueError:
+            age = None
+    schedule = None
+    if state["sleep_at"] and state["wake_at"]:
+        schedule = {"sleep_at": state["sleep_at"], "wake_at": state["wake_at"]}
+    return {
+        "command": state["sleep_cmd"] or None,
+        "command_id": state["sleep_cmd_id"],
+        "command_age_seconds": age,
+        "schedule": schedule,
+    }
+
+
+def sleep_token(state) -> str:
+    """Changes whenever a sleep command or the schedule changes (for the long poll)."""
+    if "sleep_cmd_id" not in state.keys():
+        return "0||"
+    return f"{state['sleep_cmd_id']}|{state['sleep_at']}|{state['wake_at']}"
+
+
+def frame_asleep(state):
+    value = state["frame_asleep"] if "frame_asleep" in state.keys() else None
+    return None if value is None else bool(value)
+
+
 def frame_public(state: sqlite3.Row) -> dict:
     name = (state["name"] or "").strip()
     short_id = "default" if state["id"] == FRAME_ID else state["id"][:8]
@@ -350,6 +400,7 @@ def frame_public(state: sqlite3.Row) -> dict:
         "online": frame_online(state),
         "screen": screen_dict(state),
         "orientation": orientation_lock(state),
+        "asleep": frame_asleep(state),
     }
 
 
@@ -1648,6 +1699,60 @@ def api_set_display_mode(req: DisplayModeRequest, frame_id: str = FRAME_ID):
     return {"ok": True, "display_mode": mode}
 
 
+class SleepRequest(BaseModel):
+    action: str
+
+
+@app.post("/api/frame/sleep")
+def api_frame_sleep(req: SleepRequest, frame_id: str = FRAME_ID):
+    """Put the frame to sleep or wake it; holds until the next scheduled switch."""
+    action = req.action.strip().lower()
+    if action not in ("sleep", "wake"):
+        raise HTTPException(status_code=400, detail="Action must be sleep or wake")
+    with db_conn() as db:
+        state = ensure_frame(db, frame_id)
+        db.execute(
+            "UPDATE frame_state SET sleep_cmd = ?, sleep_cmd_id = sleep_cmd_id + 1, "
+            "sleep_cmd_at = ? WHERE id = ?",
+            (action, now(), state["id"]),
+        )
+        state = ensure_frame(db, state["id"])
+    return {"ok": True, "sleep": sleep_dict(state)}
+
+
+class SleepScheduleRequest(BaseModel):
+    sleep_at: str = ""
+    wake_at: str = ""
+
+
+def clean_time(value: str) -> str:
+    value = value.strip()
+    if not value:
+        return ""
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})", value)
+    if not m or int(m.group(1)) > 23 or int(m.group(2)) > 59:
+        raise HTTPException(status_code=400, detail=f"Not a time: {value}")
+    return f"{int(m.group(1)):02d}:{m.group(2)}"
+
+
+@app.put("/api/frame/sleep-schedule")
+def api_frame_sleep_schedule(req: SleepScheduleRequest, frame_id: str = FRAME_ID):
+    """Sleep every day at sleep_at and wake at wake_at (frame's local time); empty = off."""
+    sleep_at, wake_at = clean_time(req.sleep_at), clean_time(req.wake_at)
+    if bool(sleep_at) != bool(wake_at):
+        raise HTTPException(status_code=400, detail="Give both times, or neither")
+    if sleep_at and sleep_at == wake_at:
+        raise HTTPException(status_code=400, detail="Sleep and wake times are the same")
+    with db_conn() as db:
+        state = ensure_frame(db, frame_id)
+        db.execute(
+            "UPDATE frame_state SET sleep_at = ?, wake_at = ? WHERE id = ?",
+            (sleep_at, wake_at, state["id"]),
+        )
+        state = ensure_frame(db, state["id"])
+    return {"ok": True, "sleep": sleep_dict(state)}
+
+
 class OrientationRequest(BaseModel):
     orientation: str
 
@@ -1762,6 +1867,8 @@ def build_frame_state(frame_id: str = FRAME_ID) -> dict:
         "display_mode": display_mode(state),
         "orientation": orientation_lock(state),
         "screen": screen_dict(state),
+        "sleep": sleep_dict(state),
+        "asleep": frame_asleep(state),
         "transitions": transitions,
         "shown_image_id": state["shown_image_id"],
         "shown_at": state["shown_at"],
@@ -1787,6 +1894,7 @@ def api_frame_wait(
     blur_background: bool | None = None,
     display_mode: str | None = None,
     orientation: str | None = None,
+    sleep: str | None = None,
     restart_id: int | None = None,
     timeout: int = 15,
     frame_id: str = FRAME_ID,
@@ -1809,8 +1917,8 @@ def api_frame_wait(
         with db_conn() as db:
             state = db.execute(
                 "SELECT version, update_id, update_status, show_clock, "
-                "blur_background, display_mode, orientation_lock, restart_id "
-                "FROM frame_state WHERE id = ?",
+                "blur_background, display_mode, orientation_lock, restart_id, "
+                "sleep_cmd_id, sleep_at, wake_at FROM frame_state WHERE id = ?",
                 (frame_id,),
             ).fetchone()
             if state is None:
@@ -1834,6 +1942,8 @@ def api_frame_wait(
                 changed = changed or current_display_mode(state) != display_mode
             if orientation is not None:
                 changed = changed or orientation_lock(state) != orientation
+            if sleep is not None:
+                changed = changed or sleep_token(state) != sleep
             if restart_id is not None:
                 changed = changed or (state["restart_id"] or 0) != restart_id
             if not changed and now_mono - last_ping >= 5:
@@ -1873,6 +1983,8 @@ def api_frame_status(frame_id: str = FRAME_ID):
         "random": bool(state["random"]),
         "screen": screen_dict(state),
         "orientation": orientation_lock(state),
+        "sleep": sleep_dict(state),
+        "asleep": frame_asleep(state),
         "shown_image_id": state["shown_image_id"],
         "shown_at": state["shown_at"],
         "last_seen_at": state["last_seen_at"],
@@ -1904,11 +2016,17 @@ def api_frame_heartbeat(
     version_name: str | None = None,
     screen_width: int | None = None,
     screen_height: int | None = None,
+    asleep: bool | None = None,
     frame_id: str = FRAME_ID,
 ):
     """Mark the frame as alive; called on every poll (and when it turns)."""
     with db_conn() as db:
         state = ensure_frame(db, frame_id)
+        if asleep is not None:
+            db.execute(
+                "UPDATE frame_state SET frame_asleep = ? WHERE id = ?",
+                (1 if asleep else 0, state["id"]),
+            )
         if screen_width and screen_height and screen_width > 0 and screen_height > 0:
             db.execute(
                 "UPDATE frame_state SET screen_width = ?, screen_height = ? WHERE id = ?",

@@ -88,6 +88,12 @@
   }
   .pill.online { color: var(--ok); }
   .pill.offline { color: var(--danger); }
+  .pill.sleeping { color: #9db4ff; }
+  input[type=time] {
+    background: var(--panel2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px;
+    padding: 5px 8px; font: inherit; color-scheme: dark;
+  }
   .row-label {
     color: var(--muted);
     font-size: 12px;
@@ -330,6 +336,7 @@
     <h1>MemoryLink</h1>
     <select id="frameSelect" title="Frame to control"></select>
     <span id="frameStatus" class="pill offline">Frame offline</span>
+    <button id="sleepBtn" class="small" type="button" hidden>☾ Sleep</button>
     <span class="spacer"></span>
     <label class="btn primary">Upload photos<input id="fileInput" type="file" accept="image/*" multiple hidden></label>
     <button id="settingsBtn" type="button">Settings</button>
@@ -426,6 +433,16 @@
         <label class="check"><input type="radio" name="displayMode" value="fit"> Whole photo, black border</label>
         <label class="check"><input type="radio" name="displayMode" value="blur"> Whole photo, blurred zoomed border</label>
         <label class="check"><input type="radio" name="displayMode" value="pan"> Zoomed in to fill the screen, slowly panning across</label>
+      </div>
+      <label class="check"><input id="sleepScheduleOn" type="checkbox"> Sleep every night</label>
+      <div id="sleepTimes" hidden>
+        <div class="row">
+          <label class="check">sleep at <input id="sleepAt" type="time" value="23:00"></label>
+          <label class="check">wake at <input id="wakeAt" type="time" value="07:00"></label>
+          <button id="saveScheduleBtn" class="small" type="button">Save</button>
+        </div>
+        <div class="hint">In the frame's own time. Sleep and Wake (next to the frame's name)
+          hold until the next scheduled switch; touching the frame wakes it too.</div>
       </div>
       <div>
         <div>Transitions</div>
@@ -538,6 +555,7 @@ let frame = null;
 
 let shownId = null;           // photo the frame last reported as displayed
 let frameOnline = false;
+let frameAsleep = null;       // what the frame last reported (null = unknown)
 let galleryScreen = null;     // the frame shape the gallery is drawn in
 let frameScreen = null;       // the shape the frame last reported
 let stateVersion = null;
@@ -917,11 +935,26 @@ async function removeFrame() {
 
 function updateFrameStatus() {
   const el = $("#frameStatus");
-  el.textContent = currentFrameId
-    ? (frameOnline ? "Frame online" : "Frame offline")
-    : "No frame";
-  el.className = "pill " + (frameOnline ? "online" : "offline");
+  const sleeping = frameOnline && frameAsleep === true;
+  el.textContent = !currentFrameId ? "No frame"
+    : !frameOnline ? "Frame offline"
+    : sleeping ? "Frame sleeping" : "Frame online";
+  el.className = "pill " + (!frameOnline ? "offline" : sleeping ? "sleeping" : "online");
+  const btn = $("#sleepBtn");
+  btn.hidden = !currentFrameId;
+  btn.textContent = sleeping ? "☀ Wake" : "☾ Sleep";
+  btn.title = sleeping ? "Wake the frame up" : "Put the frame to sleep (screen off)";
   updateRemoveFrameButton();
+}
+
+function renderSleepSchedule(sleep) {
+  const schedule = sleep && sleep.schedule;
+  $("#sleepScheduleOn").checked = !!schedule;
+  if (schedule) {
+    $("#sleepAt").value = schedule.sleep_at;
+    $("#wakeAt").value = schedule.wake_at;
+  }
+  $("#sleepTimes").hidden = !schedule && !$("#sleepScheduleOn").checked;
 }
 
 const sameSet = (set, list) => set.size === list.length && list.every((t) => set.has(t));
@@ -999,6 +1032,9 @@ async function loadFrameState() {
     $("#showClock").checked = !!data.show_clock;
     setDisplayModeRadio(data.display_mode || (data.blur_background ? "blur" : "fit"));
     setOrientationRadio(data.orientation || "auto");
+    frameAsleep = data.asleep ?? null;
+    renderSleepSchedule(data.sleep);
+    updateFrameStatus();
     frameScreen = data.screen || null;
     setGalleryScreen(frameScreen);
     renderTransitionPanel(new Set(data.transitions || []));
@@ -1023,6 +1059,10 @@ async function refreshStatus() {
     frameOnline = nextOnline;
     updateFrameStatus();
     updateShownBadge(previous, frameOnline ? shownId : null);
+  }
+  if ((data.asleep ?? null) !== frameAsleep) {
+    frameAsleep = data.asleep ?? null;
+    updateFrameStatus();
   }
   updateRemoveFrameButton();
   frameScreen = data.screen || null;
@@ -1673,6 +1713,40 @@ function setDisplayModeRadio(mode) {
 }
 
 $("#turnBtn").addEventListener("click", () => setGalleryScreen(frameScreen));
+
+$("#sleepBtn").addEventListener("click", async () => {
+  if (!currentFrameId) return;
+  const action = frameOnline && frameAsleep === true ? "wake" : "sleep";
+  try {
+    await sendJson(withFrame("/api/frame/sleep"), "POST", { action: action });
+    toast(action === "sleep" ? "Frame going to sleep…" : "Waking the frame…", "ok");
+    if (!frameOnline) toast("The frame is offline; it will do this when it is back", "ok");
+  } catch (err) {
+    toast("Could not send that to the frame: " + err.message, "error");
+  }
+});
+
+async function saveSleepSchedule() {
+  const on = $("#sleepScheduleOn").checked;
+  const body = on
+    ? { sleep_at: $("#sleepAt").value, wake_at: $("#wakeAt").value }
+    : { sleep_at: "", wake_at: "" };
+  try {
+    const data = await sendJson(withFrame("/api/frame/sleep-schedule"), "PUT", body);
+    renderSleepSchedule(data.sleep);
+    toast(on ? "The frame sleeps from " + body.sleep_at + " to " + body.wake_at
+      : "Nightly sleep switched off", "ok");
+  } catch (err) {
+    toast("Could not save the schedule: " + err.message, "error");
+  }
+}
+
+$("#sleepScheduleOn").addEventListener("change", (e) => {
+  $("#sleepTimes").hidden = !e.target.checked;
+  if (!currentFrameId) { toast("No frame selected", "error"); return; }
+  saveSleepSchedule();
+});
+$("#saveScheduleBtn").addEventListener("click", saveSleepSchedule);
 
 $("#orientationModes").addEventListener("change", async (e) => {
   const input = e.target.closest('input[name="orientation"]');
