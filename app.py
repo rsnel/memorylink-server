@@ -69,7 +69,7 @@ MAX_TAG_LENGTH = 40
 
 # Bump this together with the VERSION file when the server code changes. If the
 # file is newer than this constant, the running process is out of date.
-SERVER_VERSION = 17
+SERVER_VERSION = 18
 VERSION_PATH = BASE_DIR / "VERSION"
 
 # Must match the Transition enum names in the Android app.
@@ -220,6 +220,12 @@ def init_db() -> None:
             db.execute("ALTER TABLE frame_state ADD COLUMN transitions TEXT NOT NULL DEFAULT '[]'")
         if "display_mode" not in cols:
             db.execute("ALTER TABLE frame_state ADD COLUMN display_mode TEXT NOT NULL DEFAULT ''")
+        if "orientation_lock" not in cols:
+            db.execute("ALTER TABLE frame_state ADD COLUMN orientation_lock TEXT NOT NULL DEFAULT 'auto'")
+        if "screen_width" not in cols:
+            db.execute("ALTER TABLE frame_state ADD COLUMN screen_width INTEGER")
+        if "screen_height" not in cols:
+            db.execute("ALTER TABLE frame_state ADD COLUMN screen_height INTEGER")
         if "shown_image_id" not in cols:
             db.execute("ALTER TABLE frame_state ADD COLUMN shown_image_id INTEGER")
         if "shown_at" not in cols:
@@ -315,6 +321,22 @@ def ensure_frame(db, frame_id: str = FRAME_ID) -> sqlite3.Row:
     return db.execute("SELECT * FROM frame_state WHERE id = ?", (frame_id,)).fetchone()
 
 
+ORIENTATIONS = ("auto", "portrait", "landscape")
+
+
+def orientation_lock(state) -> str:
+    value = state["orientation_lock"] if "orientation_lock" in state.keys() else "auto"
+    return value if value in ORIENTATIONS else "auto"
+
+
+def screen_dict(state) -> dict | None:
+    """The frame's screen in pixels as it is held now, if it reported it."""
+    keys = state.keys()
+    if "screen_width" not in keys or not state["screen_width"] or not state["screen_height"]:
+        return None
+    return {"width": state["screen_width"], "height": state["screen_height"]}
+
+
 def frame_public(state: sqlite3.Row) -> dict:
     name = (state["name"] or "").strip()
     short_id = "default" if state["id"] == FRAME_ID else state["id"][:8]
@@ -326,6 +348,8 @@ def frame_public(state: sqlite3.Row) -> dict:
         "created_at": state["created_at"],
         "last_seen_at": state["last_seen_at"],
         "online": frame_online(state),
+        "screen": screen_dict(state),
+        "orientation": orientation_lock(state),
     }
 
 
@@ -1624,6 +1648,25 @@ def api_set_display_mode(req: DisplayModeRequest, frame_id: str = FRAME_ID):
     return {"ok": True, "display_mode": mode}
 
 
+class OrientationRequest(BaseModel):
+    orientation: str
+
+
+@app.put("/api/frame/orientation")
+def api_set_orientation(req: OrientationRequest, frame_id: str = FRAME_ID):
+    """Lock the frame upright (portrait), on its side (landscape), or not (auto)."""
+    value = req.orientation.strip().lower()
+    if value not in ORIENTATIONS:
+        raise HTTPException(status_code=400, detail="Unknown orientation")
+    with db_conn() as db:
+        state = ensure_frame(db, frame_id)
+        db.execute(
+            "UPDATE frame_state SET orientation_lock = ? WHERE id = ?",
+            (value, state["id"]),
+        )
+    return {"ok": True, "orientation": value}
+
+
 class FrameNameRequest(BaseModel):
     name: str = ""
 
@@ -1717,6 +1760,8 @@ def build_frame_state(frame_id: str = FRAME_ID) -> dict:
         "show_clock": bool(state["show_clock"]),
         "blur_background": display_mode(state) == "blur",
         "display_mode": display_mode(state),
+        "orientation": orientation_lock(state),
+        "screen": screen_dict(state),
         "transitions": transitions,
         "shown_image_id": state["shown_image_id"],
         "shown_at": state["shown_at"],
@@ -1741,6 +1786,7 @@ def api_frame_wait(
     show_clock: bool | None = None,
     blur_background: bool | None = None,
     display_mode: str | None = None,
+    orientation: str | None = None,
     restart_id: int | None = None,
     timeout: int = 15,
     frame_id: str = FRAME_ID,
@@ -1763,7 +1809,8 @@ def api_frame_wait(
         with db_conn() as db:
             state = db.execute(
                 "SELECT version, update_id, update_status, show_clock, "
-                "blur_background, display_mode, restart_id FROM frame_state WHERE id = ?",
+                "blur_background, display_mode, orientation_lock, restart_id "
+                "FROM frame_state WHERE id = ?",
                 (frame_id,),
             ).fetchone()
             if state is None:
@@ -1785,6 +1832,8 @@ def api_frame_wait(
                 changed = changed or bool(state["blur_background"]) != blur_background
             if display_mode is not None:
                 changed = changed or current_display_mode(state) != display_mode
+            if orientation is not None:
+                changed = changed or orientation_lock(state) != orientation
             if restart_id is not None:
                 changed = changed or (state["restart_id"] or 0) != restart_id
             if not changed and now_mono - last_ping >= 5:
@@ -1822,6 +1871,8 @@ def api_frame_status(frame_id: str = FRAME_ID):
             "match_all": bool(state["match_all"]),
         },
         "random": bool(state["random"]),
+        "screen": screen_dict(state),
+        "orientation": orientation_lock(state),
         "shown_image_id": state["shown_image_id"],
         "shown_at": state["shown_at"],
         "last_seen_at": state["last_seen_at"],
@@ -1851,11 +1902,18 @@ def api_frame_restart(frame_id: str = FRAME_ID):
 def api_frame_heartbeat(
     version_code: int | None = None,
     version_name: str | None = None,
+    screen_width: int | None = None,
+    screen_height: int | None = None,
     frame_id: str = FRAME_ID,
 ):
-    """Mark the frame as alive; called on every poll."""
+    """Mark the frame as alive; called on every poll (and when it turns)."""
     with db_conn() as db:
         state = ensure_frame(db, frame_id)
+        if screen_width and screen_height and screen_width > 0 and screen_height > 0:
+            db.execute(
+                "UPDATE frame_state SET screen_width = ?, screen_height = ? WHERE id = ?",
+                (screen_width, screen_height, state["id"]),
+            )
         if version_code is not None:
             db.execute(
                 "UPDATE frame_state SET last_seen_at = ?, frame_version_code = ?, "

@@ -31,6 +31,9 @@ update status are per frame.
 
 **Photos**
 
+- **Gallery** — photos are shown the way the frame shows them: in the shape
+  of the frame's screen (it reports its size), whole, on a blurred copy. When
+  the frame is turned, a button offers to redraw the gallery that way.
 - **Upload photos** — multi-select or drop files anywhere on the page; accepts
   common formats (JPEG/PNG/WebP/GIF/BMP). The new photos are selected right
   after the upload so they can be tagged in one go. Files that are not images
@@ -69,7 +72,8 @@ update status are per frame.
 - **This frame** — **Save name** stores a friendly name for the selected frame.
   **Remove frame** deletes an offline frame row (the shared photos, tags and
   APK are kept); online frames must be stopped first.
-- **Display** — clock/date overlay; how photos that don't have the shape of the
+- **Display** — clock/date overlay; screen orientation (follow the tablet,
+  always upright, or always on its side — handy when the frame travels); how photos that don't have the shape of the
   screen are shown (zoomed in to fill, whole with a black border, whole on a
   blurred zoomed border, or zoomed in and slowly panning across); and the
   transition effects the frame may use (none ticked = all of them).
@@ -135,6 +139,7 @@ and combined again like any other.
 | GET | `/api/frame/status` | `{frame_id, mode, version, current_image_id, interval_seconds, filter, random, shown_image_id, shown_at, last_seen_at, online, update, version_info}` |
 | PUT | `/api/frame/transitions` | `{transitions: []}` → choose allowed effects (`[]` = all) |
 | PUT | `/api/frame/clock` | `{show_clock: bool}` → show/hide the time overlay |
+| PUT | `/api/frame/orientation` | `{orientation}`: `auto`, `portrait` or `landscape` (locks the frame's screen) |
 | PUT | `/api/frame/display` | `{display_mode}`: `fill`, `fit`, `blur` or `pan` |
 | PUT | `/api/frame/blur` | older form: `{blur_background: bool}` → `blur` or `fit` |
 | POST | `/api/frame/heartbeat` | `?version_code=…&version_name=…` → mark frame alive and report its build |

@@ -145,16 +145,27 @@
   .card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(79,140,255,.45); }
   .card[draggable=true] { cursor: grab; }
   .card.dragging { opacity: .45; }
+  /* Each photo is shown the way the frame shows it: in the frame's shape,
+     whole, on a blurred zoomed copy of itself. */
   .imgwrap {
     position: relative;
-    aspect-ratio: 9 / 16;
+    aspect-ratio: var(--frame-aspect, 9 / 16);
     background: #000;
     display: grid;
     place-items: center;
     overflow: hidden;
     cursor: pointer;
   }
-  .imgwrap img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+  .imgwrap::before {
+    content: "";
+    position: absolute;
+    inset: -24px;
+    background: var(--thumb) center / cover no-repeat;
+    filter: blur(14px) brightness(.65);
+  }
+  .imgwrap img { position: relative; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+  body.landscape-frame main { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+  #turnBtn { border-color: var(--warn); color: var(--warn); }
   .mark {
     position: absolute; top: 8px; right: 8px; z-index: 1;
     width: 22px; height: 22px;
@@ -341,6 +352,7 @@
   <h2 id="galleryCount">Photos</h2>
   <button id="selectAllBtn" class="link" type="button">Select all</button>
   <button id="selectUntaggedBtn" class="link" type="button" hidden>Select untagged</button>
+  <button id="turnBtn" class="small" type="button" hidden></button>
   <span class="spacer"></span>
   <span class="hint">Click a photo to select it (Shift for a range) · drag to change the order</span>
 </div>
@@ -393,6 +405,12 @@
     <summary>Display</summary>
     <div class="body">
       <label class="check"><input id="showClock" type="checkbox"> Show clock and date</label>
+      <div>Screen orientation</div>
+      <div id="orientationModes" class="list" role="radiogroup" aria-label="Screen orientation">
+        <label class="check"><input type="radio" name="orientation" value="auto"> Follow the tablet when it is turned</label>
+        <label class="check"><input type="radio" name="orientation" value="portrait"> Always upright (portrait)</label>
+        <label class="check"><input type="radio" name="orientation" value="landscape"> Always on its side (landscape)</label>
+      </div>
       <div>Photos that don't have the shape of the screen</div>
       <div id="displayModes" class="list" role="radiogroup" aria-label="How photos fill the screen">
         <label class="check"><input type="radio" name="displayMode" value="fill"> Zoomed in to fill the screen (edges cut off)</label>
@@ -511,6 +529,8 @@ let frame = null;
 
 let shownId = null;           // photo the frame last reported as displayed
 let frameOnline = false;
+let galleryScreen = null;     // the frame shape the gallery is drawn in
+let frameScreen = null;       // the shape the frame last reported
 let stateVersion = null;
 let draggedCard = null;
 let orderDirty = false;
@@ -641,7 +661,8 @@ function cardHtml(img) {
     '<button class="tag-x" data-tag="' + escapeHtml(t) + '" title="Remove tag" type="button">×</button></span>'
   ).join("");
   const isShown = frameOnline && img.id === shownId;
-  return '<div class="imgwrap" title="Click to select">' +
+  const thumbVar = "--thumb:url('" + String(img.thumb).replace(/['"\\()\s]/g, (c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0")) + "')";
+  return '<div class="imgwrap" title="Click to select" style="' + escapeHtml(thumbVar) + '">' +
       (isShown ? '<span class="onframe-badge">On frame</span>' : "") +
       '<span class="mark">✓</span>' +
       '<img src="' + img.thumb + '" loading="lazy" alt=""></div>' +
@@ -968,6 +989,9 @@ async function loadFrameState() {
     updateFrameStatus();
     $("#showClock").checked = !!data.show_clock;
     setDisplayModeRadio(data.display_mode || (data.blur_background ? "blur" : "fit"));
+    setOrientationRadio(data.orientation || "auto");
+    frameScreen = data.screen || null;
+    setGalleryScreen(frameScreen);
     renderTransitionPanel(new Set(data.transitions || []));
     renderAll();
   } catch (e) {
@@ -992,6 +1016,9 @@ async function refreshStatus() {
     updateShownBadge(previous, frameOnline ? shownId : null);
   }
   updateRemoveFrameButton();
+  frameScreen = data.screen || null;
+  if (!galleryScreen && frameScreen) setGalleryScreen(frameScreen);
+  renderTurnButton();
   // The library changed somewhere else (another browser, a new upload).
   if (data.version !== undefined && data.version !== stateVersion && !busyEditing()) {
     stateVersion = data.version;
@@ -1597,11 +1624,63 @@ $("#showClock").addEventListener("change", (e) => {
   }
   saveToggle(e.target, withFrame("/api/frame/clock"), "show_clock", "Clock shown", "Clock hidden");
 });
+const isLandscape = (screen) => !!screen && screen.width > screen.height;
+
+/** Draw the gallery in the shape of the frame's screen. */
+function setGalleryScreen(screen) {
+  galleryScreen = screen || null;
+  const root = document.documentElement;
+  if (galleryScreen) {
+    root.style.setProperty("--frame-aspect", galleryScreen.width + " / " + galleryScreen.height);
+  } else {
+    root.style.removeProperty("--frame-aspect");
+  }
+  document.body.classList.toggle("landscape-frame", isLandscape(galleryScreen));
+  renderTurnButton();
+}
+
+/** Offer to follow the frame when it has been turned since the gallery was drawn. */
+function renderTurnButton() {
+  const btn = $("#turnBtn");
+  const turned = !!frameScreen && !!galleryScreen &&
+    isLandscape(frameScreen) !== isLandscape(galleryScreen);
+  btn.hidden = !turned;
+  if (turned) {
+    btn.textContent = "↻ The frame was turned — show the photos " +
+      (isLandscape(frameScreen) ? "in landscape" : "upright");
+  }
+}
+
+function setOrientationRadio(value) {
+  for (const input of document.querySelectorAll('input[name="orientation"]')) {
+    input.checked = input.value === value;
+  }
+}
+
 function setDisplayModeRadio(mode) {
   for (const input of document.querySelectorAll('input[name="displayMode"]')) {
     input.checked = input.value === mode;
   }
 }
+
+$("#turnBtn").addEventListener("click", () => setGalleryScreen(frameScreen));
+
+$("#orientationModes").addEventListener("change", async (e) => {
+  const input = e.target.closest('input[name="orientation"]');
+  if (!input) return;
+  if (!currentFrameId) {
+    toast("No frame selected", "error");
+    loadFrameState();
+    return;
+  }
+  try {
+    await sendJson(withFrame("/api/frame/orientation"), "PUT", { orientation: input.value });
+    toast("Orientation: " + input.parentElement.textContent.trim(), "ok");
+  } catch (err) {
+    toast("Could not change the orientation: " + err.message, "error");
+    loadFrameState();
+  }
+});
 
 $("#displayModes").addEventListener("change", async (e) => {
   const input = e.target.closest('input[name="displayMode"]');
