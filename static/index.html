@@ -308,6 +308,7 @@
 <header>
   <div class="row">
     <h1>MemoryLink</h1>
+    <select id="frameSelect" title="Frame to control"></select>
     <span id="frameStatus" class="pill offline">Frame offline</span>
     <span class="spacer"></span>
     <label class="btn primary">Upload photos<input id="fileInput" type="file" accept="image/*" multiple hidden></label>
@@ -315,15 +316,6 @@
   </div>
 
   <div id="recommendations" class="notice" hidden></div>
-
-  <div class="row">
-    <span class="row-label">Frame</span>
-    <select id="frameSelect" title="Frame to control"></select>
-    <input id="frameName" type="text" maxlength="80" placeholder="Friendly name" autocomplete="off">
-    <button id="saveFrameNameBtn" class="small" type="button">Save name</button>
-    <button id="removeFrameBtn" class="small danger" type="button" disabled>Remove frame</button>
-    <span id="frameIdHint" class="hint"></span>
-  </div>
 
   <div class="row">
     <span class="row-label">Slideshow</span>
@@ -382,10 +374,32 @@
   </div>
 
   <details open>
+    <summary>This frame</summary>
+    <div class="body">
+      <label for="frameName">Name</label>
+      <div class="row">
+        <input id="frameName" type="text" maxlength="80" placeholder="Friendly name" autocomplete="off" style="flex:1 1 auto; width:auto; min-width:0">
+        <button id="saveFrameNameBtn" class="small" type="button">Save name</button>
+      </div>
+      <div class="row">
+        <span id="frameIdHint" class="hint"></span>
+        <span class="spacer"></span>
+        <button id="removeFrameBtn" class="small danger" type="button" disabled>Remove frame</button>
+      </div>
+    </div>
+  </details>
+
+  <details open>
     <summary>Display</summary>
     <div class="body">
       <label class="check"><input id="showClock" type="checkbox"> Show clock and date</label>
-      <label class="check"><input id="blurBackground" type="checkbox"> Blurred background around photos that do not fill the screen</label>
+      <div>Photos that don't have the shape of the screen</div>
+      <div id="displayModes" class="list" role="radiogroup" aria-label="How photos fill the screen">
+        <label class="check"><input type="radio" name="displayMode" value="fill"> Zoomed in to fill the screen (edges cut off)</label>
+        <label class="check"><input type="radio" name="displayMode" value="fit"> Whole photo, black border</label>
+        <label class="check"><input type="radio" name="displayMode" value="blur"> Whole photo, blurred zoomed border</label>
+        <label class="check"><input type="radio" name="displayMode" value="pan"> Zoomed in to fill the screen, slowly panning across</label>
+      </div>
       <div>
         <div>Transitions</div>
         <div class="hint">None ticked means all of them are used.</div>
@@ -953,7 +967,7 @@ async function loadFrameState() {
     frameOnline = !!data.online;
     updateFrameStatus();
     $("#showClock").checked = !!data.show_clock;
-    $("#blurBackground").checked = !!data.blur_background;
+    setDisplayModeRadio(data.display_mode || (data.blur_background ? "blur" : "fit"));
     renderTransitionPanel(new Set(data.transitions || []));
     renderAll();
   } catch (e) {
@@ -1583,14 +1597,27 @@ $("#showClock").addEventListener("change", (e) => {
   }
   saveToggle(e.target, withFrame("/api/frame/clock"), "show_clock", "Clock shown", "Clock hidden");
 });
-$("#blurBackground").addEventListener("change", (e) => {
+function setDisplayModeRadio(mode) {
+  for (const input of document.querySelectorAll('input[name="displayMode"]')) {
+    input.checked = input.value === mode;
+  }
+}
+
+$("#displayModes").addEventListener("change", async (e) => {
+  const input = e.target.closest('input[name="displayMode"]');
+  if (!input) return;
   if (!currentFrameId) {
-    e.target.checked = !e.target.checked;
     toast("No frame selected", "error");
+    loadFrameState();
     return;
   }
-  saveToggle(e.target, withFrame("/api/frame/blur"), "blur_background",
-    "Blurred background enabled", "Blurred background disabled");
+  try {
+    await sendJson(withFrame("/api/frame/display"), "PUT", { display_mode: input.value });
+    toast("Display: " + input.parentElement.textContent.trim(), "ok");
+  } catch (err) {
+    toast("Could not change the display: " + err.message, "error");
+    loadFrameState();
+  }
 });
 
 $("#transitionPanel").addEventListener("change", () => {

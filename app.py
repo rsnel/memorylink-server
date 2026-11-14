@@ -69,7 +69,7 @@ MAX_TAG_LENGTH = 40
 
 # Bump this together with the VERSION file when the server code changes. If the
 # file is newer than this constant, the running process is out of date.
-SERVER_VERSION = 16
+SERVER_VERSION = 17
 VERSION_PATH = BASE_DIR / "VERSION"
 
 # Must match the Transition enum names in the Android app.
@@ -218,6 +218,8 @@ def init_db() -> None:
             db.execute("ALTER TABLE frame_state ADD COLUMN blur_background INTEGER NOT NULL DEFAULT 0")
         if "transitions" not in cols:
             db.execute("ALTER TABLE frame_state ADD COLUMN transitions TEXT NOT NULL DEFAULT '[]'")
+        if "display_mode" not in cols:
+            db.execute("ALTER TABLE frame_state ADD COLUMN display_mode TEXT NOT NULL DEFAULT ''")
         if "shown_image_id" not in cols:
             db.execute("ALTER TABLE frame_state ADD COLUMN shown_image_id INTEGER")
         if "shown_at" not in cols:
@@ -1571,15 +1573,55 @@ class BlurRequest(BaseModel):
     blur_background: bool
 
 
+# How the frame shows a photo whose shape differs from the screen:
+#   fill  - zoomed to fill the screen, the overflow cut off
+#   fit   - whole photo, black borders
+#   blur  - whole photo on a blurred, zoomed copy of itself
+#   pan   - zoomed to fill the screen and slowly panned across the photo
+DISPLAY_MODES = ("fill", "fit", "blur", "pan")
+
+
+def display_mode(state) -> str:
+    mode = state["display_mode"] if "display_mode" in state.keys() else ""
+    if mode in DISPLAY_MODES:
+        return mode
+    return "blur" if state["blur_background"] else "fit"
+
+
+# The long poll has a parameter called display_mode; this name stays reachable.
+current_display_mode = display_mode
+
+
 @app.put("/api/frame/blur")
 def api_set_blur(req: BlurRequest, frame_id: str = FRAME_ID):
+    """Older API: on/off for the blurred border. Prefer /api/frame/display."""
+    mode = "blur" if req.blur_background else "fit"
     with db_conn() as db:
         state = ensure_frame(db, frame_id)
         db.execute(
-            "UPDATE frame_state SET blur_background = ? WHERE id = ?",
-            (1 if req.blur_background else 0, state["id"]),
+            "UPDATE frame_state SET blur_background = ?, display_mode = ? WHERE id = ?",
+            (1 if req.blur_background else 0, mode, state["id"]),
         )
-    return {"ok": True, "blur_background": req.blur_background}
+    return {"ok": True, "blur_background": req.blur_background, "display_mode": mode}
+
+
+class DisplayModeRequest(BaseModel):
+    display_mode: str
+
+
+@app.put("/api/frame/display")
+def api_set_display_mode(req: DisplayModeRequest, frame_id: str = FRAME_ID):
+    mode = req.display_mode.strip().lower()
+    if mode not in DISPLAY_MODES:
+        raise HTTPException(status_code=400, detail="Unknown display mode")
+    with db_conn() as db:
+        state = ensure_frame(db, frame_id)
+        # Keep the old flag in step for frame apps that only know about blur.
+        db.execute(
+            "UPDATE frame_state SET display_mode = ?, blur_background = ? WHERE id = ?",
+            (mode, 1 if mode == "blur" else 0, state["id"]),
+        )
+    return {"ok": True, "display_mode": mode}
 
 
 class FrameNameRequest(BaseModel):
@@ -1638,8 +1680,9 @@ def build_frame_state(frame_id: str = FRAME_ID) -> dict:
         images = list_images(db, tag_filter or None, match_all, exclude_tags or None)
         # The whole library in gallery order, so the frame can browse beyond
         # the slideshow's selection and keep every photo for offline use.
+        tag_map = tags_by_image(db)
         library = [
-            {"id": r["id"], "url": f"/images/{r['filename']}"}
+            {"id": r["id"], "url": f"/images/{r['filename']}", "tags": tag_map.get(r["id"], [])}
             for r in db.execute(
                 "SELECT id, filename FROM images ORDER BY position IS NULL, position, id DESC"
             ).fetchall()
@@ -1672,7 +1715,8 @@ def build_frame_state(frame_id: str = FRAME_ID) -> dict:
         },
         "random": bool(state["random"]),
         "show_clock": bool(state["show_clock"]),
-        "blur_background": bool(state["blur_background"]),
+        "blur_background": display_mode(state) == "blur",
+        "display_mode": display_mode(state),
         "transitions": transitions,
         "shown_image_id": state["shown_image_id"],
         "shown_at": state["shown_at"],
@@ -1696,6 +1740,7 @@ def api_frame_wait(
     update_status: str | None = None,
     show_clock: bool | None = None,
     blur_background: bool | None = None,
+    display_mode: str | None = None,
     restart_id: int | None = None,
     timeout: int = 15,
     frame_id: str = FRAME_ID,
@@ -1718,7 +1763,7 @@ def api_frame_wait(
         with db_conn() as db:
             state = db.execute(
                 "SELECT version, update_id, update_status, show_clock, "
-                "blur_background, restart_id FROM frame_state WHERE id = ?",
+                "blur_background, display_mode, restart_id FROM frame_state WHERE id = ?",
                 (frame_id,),
             ).fetchone()
             if state is None:
@@ -1738,6 +1783,8 @@ def api_frame_wait(
                 changed = changed or bool(state["show_clock"]) != show_clock
             if blur_background is not None:
                 changed = changed or bool(state["blur_background"]) != blur_background
+            if display_mode is not None:
+                changed = changed or current_display_mode(state) != display_mode
             if restart_id is not None:
                 changed = changed or (state["restart_id"] or 0) != restart_id
             if not changed and now_mono - last_ping >= 5:

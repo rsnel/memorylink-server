@@ -61,16 +61,18 @@ update status are per frame.
   the selected frame. The text next to the button tells what the frame is
   playing, and turns yellow when the page shows something else than the frame
   was told.
-- **Frame picker** — choose which frame the controls apply to. **Save name**
-  stores a friendly name for it; an unnamed frame is shown by the first eight
-  characters of its UUID. **Remove frame** deletes an offline frame row (the
-  shared photos, tags and APK are kept); online frames must be stopped first.
+- **Frame picker** — next to the title: choose which frame the controls apply
+  to. An unnamed frame is shown by the first eight characters of its UUID.
 
 **Settings**
 
-- **Display** — clock/date overlay, blurred background for photos that do not
-  fill the screen, and the transition effects the frame may use (none ticked =
-  all of them).
+- **This frame** — **Save name** stores a friendly name for the selected frame.
+  **Remove frame** deletes an offline frame row (the shared photos, tags and
+  APK are kept); online frames must be stopped first.
+- **Display** — clock/date overlay; how photos that don't have the shape of the
+  screen are shown (zoomed in to fill, whole with a black border, whole on a
+  blurred zoomed border, or zoomed in and slowly panning across); and the
+  transition effects the frame may use (none ticked = all of them).
 - **New uploads** — tags that every uploaded photo gets automatically, for
   example `new, {year}`. `{year}`, `{month}` and `{date}` are replaced by the
   upload date (`2026`, `2026-11`, `2026-11-13`).
@@ -128,12 +130,13 @@ and combined again like any other.
 | GET | `/thumbs/{filename}` | thumbnail |
 | POST | `/api/images/{id}/display` | pin an image on the selected frame |
 | POST | `/api/frame/slideshow` | `{interval_seconds, tags, exclude_tags, match_all, random}` → filtered slideshow |
-| GET | `/api/frame/current` | what the selected frame should show now (`frame_id`, `images`, `library` (every image, `{id, url}` in gallery order, for browsing and offline use), `filter`, `random`, `transitions`, `blur_background`, `shown_image_id`, `online`, `version_info`) |
-| GET | `/api/frame/wait` | long poll; returns the new state when the frame version, update, clock, or blur setting changes (204 on timeout) |
+| GET | `/api/frame/current` | what the selected frame should show now (`frame_id`, `images`, `library` (every image, `{id, url, tags}` in gallery order, for browsing and offline use), `filter`, `random`, `transitions`, `display_mode`, `blur_background`, `shown_image_id`, `online`, `version_info`) |
+| GET | `/api/frame/wait` | long poll; returns the new state when the frame version, update, clock, display mode (`display_mode=`) or blur setting changes (204 on timeout) |
 | GET | `/api/frame/status` | `{frame_id, mode, version, current_image_id, interval_seconds, filter, random, shown_image_id, shown_at, last_seen_at, online, update, version_info}` |
 | PUT | `/api/frame/transitions` | `{transitions: []}` → choose allowed effects (`[]` = all) |
 | PUT | `/api/frame/clock` | `{show_clock: bool}` → show/hide the time overlay |
-| PUT | `/api/frame/blur` | `{blur_background: bool}` → fill letterboxing with a blurred copy |
+| PUT | `/api/frame/display` | `{display_mode}`: `fill`, `fit`, `blur` or `pan` |
+| PUT | `/api/frame/blur` | older form: `{blur_background: bool}` → `blur` or `fit` |
 | POST | `/api/frame/heartbeat` | `?version_code=…&version_name=…` → mark frame alive and report its build |
 | POST | `/api/frame/restart` | increment the frame restart command id |
 | POST | `/api/frame/shown` | `{image_id}` → record which image the frame is actually displaying |
