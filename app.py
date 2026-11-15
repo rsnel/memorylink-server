@@ -69,7 +69,7 @@ MAX_TAG_LENGTH = 40
 
 # Bump this together with the VERSION file when the server code changes. If the
 # file is newer than this constant, the running process is out of date.
-SERVER_VERSION = 19
+SERVER_VERSION = 20
 VERSION_PATH = BASE_DIR / "VERSION"
 
 # Must match the Transition enum names in the Android app.
@@ -81,6 +81,15 @@ TRANSITIONS = [
     "SLIDE_DOWN",
     "ZOOM_IN",
     "ZOOM_OUT",
+    # 3D
+    "LEAPFROG",
+    "TURNAROUND",
+    "CUBE",
+    "DOOR",
+    "FALL_AWAY",
+    "CAROUSEL",
+    "CARD_STACK",
+    "BLINDS",
 ]
 
 app = FastAPI(title="MemoryLink Photoframe Server")
