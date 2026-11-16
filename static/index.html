@@ -479,6 +479,7 @@
     <div class="body">
       <div id="versionInfo" class="muted"></div>
       <div id="updateInfo"></div>
+      <label class="check" title="Unticked, pushing and canceling only affect the selected frame"><input id="updateAllFrames" type="checkbox"> All frames, not only this one</label>
       <div class="row">
         <label class="btn">Push update APK<input id="apkInput" type="file" accept=".apk,application/vnd.android.package-archive" hidden></label>
         <button id="cancelUpdateBtn" class="danger" type="button" hidden>Cancel update</button>
@@ -601,6 +602,13 @@ const sendJson = (path, method, body) => api(path, {
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify(body),
 });
+
+// Update actions go to the selected frame, or to all of them when ticked.
+const updateTarget = (path) => {
+  const all = $("#updateAllFrames").checked;
+  return { url: withFrame(path) + (all ? "&all_frames=true" : ""),
+           who: all ? "all frames" : ($("#frameName").value.trim() || "this frame") };
+};
 
 const withFrame = (path) => {
   if (!currentFrameId) throw new Error("No frame selected");
@@ -1842,9 +1850,10 @@ $("#apkInput").addEventListener("change", async (e) => {
   fd.append("apk", file);
   toast("Uploading update…", "busy");
   try {
-    const data = await api(withFrame("/api/update"), { method: "POST", body: fd });
+    const t = updateTarget("/api/update");
+    const data = await api(t.url, { method: "POST", body: fd });
     renderUpdateInfo(data.update);
-    toast("Update queued for all frames — approve the install on each", "ok");
+    toast("Update queued for " + t.who + " — approve the install on the frame", "ok");
   } catch (err) {
     toast("Update push failed: " + err.message, "error");
   }
@@ -1852,11 +1861,12 @@ $("#apkInput").addEventListener("change", async (e) => {
 });
 
 $("#cancelUpdateBtn").addEventListener("click", async () => {
-  if (!confirm("Cancel the pending update?")) return;
+  const t = updateTarget("/api/update/cancel");
+  if (!confirm("Cancel the pending update for " + t.who + "?")) return;
   try {
-    const data = await api(withFrame("/api/update/cancel"), { method: "POST" });
+    const data = await api(t.url, { method: "POST" });
     renderUpdateInfo(data.update);
-    toast("Update canceled for all frames", "ok");
+    toast("Update canceled for " + t.who, "ok");
   } catch (err) {
     toast("Cancel failed: " + err.message, "error");
   }
@@ -1905,13 +1915,14 @@ $("#downloadGithubBtn").addEventListener("click", async () => {
 });
 
 $("#pushDownloadedBtn").addEventListener("click", async () => {
-  if (!confirm("Push the downloaded build to the frame?")) return;
+  const t = updateTarget("/api/github/push");
+  if (!confirm("Push the downloaded build to " + t.who + "?")) return;
   try {
-    const data = await api(withFrame("/api/github/push"), { method: "POST" });
+    const data = await api(t.url, { method: "POST" });
     renderUpdateInfo(data.update);
     setGithubDownloaded(null);
     const name = data.update && data.update.name ? data.update.name : "update";
-    toast("Queued " + name + " for all frames", "ok");
+    toast("Queued " + name + " for " + t.who, "ok");
   } catch (e) {
     toast("Could not push the downloaded build: " + e.message, "error");
   }

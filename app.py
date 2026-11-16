@@ -48,6 +48,9 @@ SCALED_DIR = DATA_DIR / "scaled"
 STATIC_DIR = BASE_DIR / "static"
 DB_PATH = DATA_DIR / "frame.db"
 UPDATE_PATH = DATA_DIR / "update.apk"
+# One file per pushed APK (named by its SHA-256), so frames that are waiting
+# for different builds each keep theirs.
+UPDATES_DIR = DATA_DIR / "updates"
 GITHUB_TOKEN_PATH = DATA_DIR / "github_token"
 GITHUB_STAGED_PATH = DATA_DIR / "github_latest.apk"
 GITHUB_STAGED_META = DATA_DIR / "github_latest.json"
@@ -69,7 +72,7 @@ MAX_TAG_LENGTH = 40
 
 # Bump this together with the VERSION file when the server code changes. If the
 # file is newer than this constant, the running process is out of date.
-SERVER_VERSION = 20
+SERVER_VERSION = 21
 VERSION_PATH = BASE_DIR / "VERSION"
 
 # Must match the Transition enum names in the Android app.
@@ -657,13 +660,26 @@ def version_info(state) -> dict:
     }
 
 
+def update_file(sha256: str | None) -> Path | None:
+    """The stored APK with this checksum (or the old shared file)."""
+    if sha256 and re.fullmatch(r"[0-9a-f]{64}", sha256):
+        path = UPDATES_DIR / f"{sha256}.apk"
+        if path.is_file():
+            return path
+    return UPDATE_PATH if UPDATE_PATH.is_file() else None
+
+
 def update_dict(state) -> dict | None:
     """Describe the pushed APK, if there is one the frame can fetch."""
-    if not state["update_id"] or not UPDATE_PATH.is_file():
+    if not state["update_id"]:
         return None
+    path = update_file(state["update_sha256"])
+    if path is None:
+        return None
+    url = f"/update/{path.stem}.apk" if path.parent == UPDATES_DIR else "/update.apk"
     return {
         "id": state["update_id"],
-        "url": "/update.apk",
+        "url": url,
         "name": state["update_name"],
         "sha256": state["update_sha256"],
         "size": state["update_size"],
@@ -877,6 +893,21 @@ def get_thumb(filename: str):
     return FileResponse(thumb)
 
 
+@app.get("/update/{sha256}.apk")
+def get_update_apk_by_sha(sha256: str):
+    if not re.fullmatch(r"[0-9a-f]{64}", sha256):
+        raise HTTPException(status_code=404, detail="not found")
+    path = UPDATES_DIR / f"{sha256}.apk"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="No such update")
+    return FileResponse(
+        path,
+        media_type="application/vnd.android.package-archive",
+        filename="memorylink.apk",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @app.get("/update.apk")
 def get_update_apk():
     if not UPDATE_PATH.is_file():
@@ -1055,19 +1086,47 @@ def api_get_update(frame_id: str = FRAME_ID):
     return {"update": update_dict(state)}
 
 
+def store_update_apk(src: Path, sha256: str) -> None:
+    """Move an APK into the per-checksum store and keep /update.apk current."""
+    UPDATES_DIR.mkdir(parents=True, exist_ok=True)
+    dest = UPDATES_DIR / f"{sha256}.apk"
+    shutil.copyfile(src, UPDATE_PATH.with_name(UPDATE_PATH.name + ".new"))
+    UPDATE_PATH.with_name(UPDATE_PATH.name + ".new").replace(UPDATE_PATH)
+    src.replace(dest)
+
+
+def prune_update_apks(db) -> None:
+    """Remove stored APKs no frame is waiting for any more."""
+    if not UPDATES_DIR.is_dir():
+        return
+    wanted = {
+        row["update_sha256"]
+        for row in db.execute(
+            "SELECT update_sha256 FROM frame_state WHERE update_id > 0 "
+            "AND COALESCE(update_status, 'pending') NOT IN ('installed', 'canceled')"
+        ).fetchall()
+        if row["update_sha256"]
+    }
+    for path in UPDATES_DIR.glob("*.apk"):
+        if path.stem not in wanted:
+            path.unlink(missing_ok=True)
+
+
 def record_update(
-    name: str, sha256: str, size: int, frame_id: str = FRAME_ID
+    name: str, sha256: str, size: int, frame_id: str = FRAME_ID, all_frames: bool = False
 ) -> dict | None:
-    """Queue an APK for every known frame (the APK file is shared)."""
+    """Queue an APK for the selected frame, or for every known frame."""
     with db_conn() as db:
         frames = db.execute("SELECT id, update_id FROM frame_state").fetchall()
         if not frames:
             ensure_frame(db, frame_id)
             frames = db.execute("SELECT id, update_id FROM frame_state").fetchall()
         # A legacy caller without a frame id should not recreate a "default"
-        # row when real frames exist; return the first frame's status instead.
+        # row when real frames exist; use the first frame instead.
         known = {frame["id"] for frame in frames}
         target_id = frame_id if frame_id in known else frames[0]["id"]
+        if not all_frames:
+            frames = [frame for frame in frames if frame["id"] == target_id]
         uploaded = now()
         for frame in frames:
             update_id = (frame["update_id"] or 0) + 1
@@ -1078,6 +1137,7 @@ def record_update(
                 "update_result_at = NULL WHERE id = ?",
                 (update_id, name, sha256, size, uploaded, frame["id"]),
             )
+        prune_update_apks(db)
         state = ensure_frame(db, target_id)
         return update_dict(state)
 
@@ -1292,7 +1352,7 @@ def api_github_download():
 
 
 @app.post("/api/github/push")
-def api_github_push(frame_id: str = FRAME_ID):
+def api_github_push(frame_id: str = FRAME_ID, all_frames: bool = False):
     """Queue the APK fetched by the last Download latest build action."""
     meta = staged_github_update()
     if meta is None:
@@ -1314,14 +1374,16 @@ def api_github_push(frame_id: str = FRAME_ID):
     if expected and expected.lower() != digest:
         clear_staged_github_update()
         raise HTTPException(status_code=409, detail="Downloaded APK checksum mismatch")
-    GITHUB_STAGED_PATH.replace(UPDATE_PATH)
+    store_update_apk(GITHUB_STAGED_PATH, digest)
     GITHUB_STAGED_META.unlink(missing_ok=True)
-    update = record_update(name, digest, size, frame_id)
+    update = record_update(name, digest, size, frame_id, all_frames)
     return {"ok": True, "update": update}
 
 
 @app.post("/api/update")
-async def api_push_update(apk: UploadFile = File(...), frame_id: str = FRAME_ID):
+async def api_push_update(
+    apk: UploadFile = File(...), frame_id: str = FRAME_ID, all_frames: bool = False
+):
     """Store an APK and announce it to the frame as a new update."""
     tmp = UPDATE_PATH.with_name(UPDATE_PATH.name + ".tmp")
     hasher = hashlib.sha256()
@@ -1339,12 +1401,12 @@ async def api_push_update(apk: UploadFile = File(...), frame_id: str = FRAME_ID)
                 out.write(chunk)
         if not first_bytes.startswith(b"PK"):
             raise HTTPException(status_code=400, detail="Not an APK file")
-        tmp.replace(UPDATE_PATH)
+        store_update_apk(tmp, hasher.hexdigest())
     finally:
         tmp.unlink(missing_ok=True)
 
     update = record_update(
-        apk.filename or "update.apk", hasher.hexdigest(), size, frame_id
+        apk.filename or "update.apk", hasher.hexdigest(), size, frame_id, all_frames
     )
     return {"ok": True, "update": update}
 
@@ -1376,20 +1438,23 @@ def api_update_result(req: UpdateResultRequest, frame_id: str = FRAME_ID):
 
 
 @app.post("/api/update/cancel")
-def api_cancel_update(frame_id: str = FRAME_ID):
-    """Withdraw the queued APK so the selected frame will not install it."""
+def api_cancel_update(frame_id: str = FRAME_ID, all_frames: bool = False):
+    """Withdraw the queued APK for the selected frame (or every frame)."""
     with db_conn() as db:
         state = ensure_frame(db, frame_id)
+        where = "update_id > 0" + ("" if all_frames else " AND id = ?")
+        args = () if all_frames else (state["id"],)
         any_update = db.execute(
-            "SELECT 1 FROM frame_state WHERE update_id > 0 LIMIT 1"
+            f"SELECT 1 FROM frame_state WHERE {where} LIMIT 1", args
         ).fetchone()
         if any_update is None:
             raise HTTPException(status_code=404, detail="No update to cancel")
         db.execute(
             "UPDATE frame_state SET update_status = 'canceled', update_error = NULL, "
-            "update_result_at = ? WHERE update_id > 0",
-            (now(),),
+            f"update_result_at = ? WHERE {where}",
+            (now(), *args),
         )
+        prune_update_apks(db)
         state = ensure_frame(db, state["id"])
         update = update_dict(state)
     return {"ok": True, "update": update}
